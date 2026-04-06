@@ -81,7 +81,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (session.user.role === 'EMPLOYEE') {
+    // Only ADMIN and SELLER roles can create products
+    if (!['ADMIN', 'SELLER'].includes(session.user.role as string)) {
       return NextResponse.json({ success: false, error: 'Permission denied' }, { status: 403 });
     }
 

@@ -10,6 +10,19 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Lookup employee record first
+    const employee = await prisma.employee.findUnique({
+      where: { userId: session.user.id },
+      select: { id: true },
+    });
+
+    if (!employee) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Employee record not found' 
+      }, { status: 404 });
+    }
+
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -17,7 +30,7 @@ export async function GET() {
     const [monthlySales, todaySales, cancelled, leads, pending] = await Promise.all([
       prisma.sale.aggregate({
         where: { 
-          employeeId: session.user.id,
+          employeeId: employee.id,
           createdAt: { gte: startOfMonth },
           paymentStatus: 'PAID',
         },
@@ -25,7 +38,7 @@ export async function GET() {
       }),
       prisma.sale.aggregate({
         where: { 
-          employeeId: session.user.id,
+          employeeId: employee.id,
           createdAt: { gte: startOfDay },
           paymentStatus: 'PAID',
         },
@@ -33,7 +46,7 @@ export async function GET() {
       }),
       prisma.sale.count({
         where: { 
-          employeeId: session.user.id,
+          employeeId: employee.id,
           status: 'CANCELLED',
           createdAt: { gte: startOfMonth },
         },
