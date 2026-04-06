@@ -1,0 +1,471 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum SaleStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum UserRole {
+  ADMIN
+  SELLER
+  MARKETING
+}
+
+enum OrderStage {
+  LEAD
+  TRANSFERRED
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CategoryType {
+  PRODUCT
+  EXPENSE
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  CARD
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  name          String
+  nameBn        String?   @map("name_bn")
+  role          UserRole  @default(SELLER)
+  phone         String?
+  address       String?   @map("address")
+  addressBn     String?   @map("address_bn")
+  avatar        String?   @map("avatar_url")
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  employee        Employee?
+  notifications   Notification[]
+  attendances     Attendance[]
+  activities      DailyActivity[]
+  leaveRequests   LeaveRequest[]
+  salaries        Salary[]
+
+  @@map("users")
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  name      String
+  nameBn    String?      @map("name_bn")
+  type      CategoryType @default(PRODUCT)
+  parentId  String?      @map("parent_id")
+  icon      String?
+  status    Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  parent    Category?   @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[]   @relation("CategoryHierarchy")
+  products  Product[]
+  expenses  Expense[]
+
+  @@map("categories")
+}
+
+model Product {
+  id            String    @id @default(cuid())
+  sku           String    @unique
+  name          String
+  nameBn        String?   @map("name_bn")
+  categoryId    String    @map("category_id")
+  description   String?   @map("description")
+  descriptionBn String?   @map("description_bn")
+  unit          String    @default("pcs")
+  costPrice     Float     @map("cost_price")
+  sellPrice     Float     @map("sell_price")
+  quantity      Int       @default(0)
+  minStockAlert Int       @default(10) @map("min_stock_alert")
+  imageUrl      String?   @map("image_url")
+  status        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  category      Category    @relation(fields: [categoryId], references: [id])
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+
+  @@map("products")
+}
+
+model Customer {
+  id          String    @id @default(cuid())
+  name        String
+  nameBn      String?   @map("name_bn")
+  phone       String    @unique
+  email       String?   @unique
+  address     String?   @map("address")
+  addressBn   String?   @map("address_bn")
+  companyName String?   @map("company_name")
+  totalDue    Float     @default(0) @map("total_due")
+  status      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  sales       Sale[]
+
+  @@map("customers")
+}
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  nameBn      String?   @map("name_bn")
+  phone       String    @unique
+  email       String?   @unique
+  address     String?   @map("address")
+  addressBn   String?   @map("address_bn")
+  companyName String?   @map("company_name")
+  totalDue    Float     @default(0) @map("total_due")
+  status      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+model Employee {
+  id            String    @id @default(cuid())
+  userId        String    @unique @map("user_id")
+  employeeCode  String    @unique @map("employee_code")
+  designation   String
+  designationBn String?   @map("designation_bn")
+  salary        Float     @default(0)
+  hireDate      DateTime? @map("hire_date")
+  status        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user          User      @relation(fields: [userId], references: [id])
+  sales         Sale[]
+  purchases     Purchase[]
+  expenses      Expense[]
+
+  @@map("employees")
+}
+
+model Sale {
+  id              String        @id @default(cuid())
+  orderId         String        @unique @map("order_id")
+  customerId      String?       @map("customer_id")
+  employeeId      String        @map("employee_id")
+  subtotal        Float         @default(0)
+  discount        Float         @default(0)
+  tax             Float         @default(0)
+  total           Float         @default(0)
+  paymentMethod   PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  status          SaleStatus   @default(PENDING)
+  invoiceNumber  String?       @unique @map("invoice_number")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  customer        Customer?    @relation(fields: [customerId], references: [id])
+  employee        Employee     @relation(fields: [employeeId], references: [id])
+  items           SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String    @id @default(cuid())
+  saleId      String    @map("sale_id")
+  productId   String    @map("product_id")
+  quantity    Int
+  unitPrice   Float     @map("unit_price")
+  total       Float
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model Purchase {
+  id              String        @id @default(cuid())
+  purchaseOrderNo String        @unique @map("purchase_order_no")
+  supplierId      String        @map("supplier_id")
+  employeeId      String        @map("employee_id")
+  subtotal        Float         @default(0)
+  discount        Float         @default(0)
+  tax             Float         @default(0)
+  total           Float         @default(0)
+  paymentMethod   PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  status          SaleStatus   @default(PENDING)
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  supplier        Supplier      @relation(fields: [supplierId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+  items           PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String    @id @default(cuid())
+  purchaseId  String    @map("purchase_id")
+  productId   String    @map("product_id")
+  quantity    Int
+  unitPrice   Float     @map("unit_price")
+  total       Float
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  purchase    Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model Expense {
+  id              String        @id @default(cuid())
+  categoryId      String        @map("category_id")
+  employeeId      String        @map("employee_id")
+  amount          Float
+  description     String
+  descriptionBn   String?       @map("description_bn")
+  paymentMethod   PaymentMethod @default(CASH) @map("payment_method")
+  paymentStatus   PaymentStatus @default(PAID) @map("payment_status")
+  date            DateTime      @default(now())
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  category        Category      @relation(fields: [categoryId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id])
+
+  @@map("expenses")
+}
+
+model Account {
+  id            String    @id @default(cuid())
+  name          String
+  type          String    @default("CASH")
+  accountNumber String?   @map("account_number")
+  bankName      String?   @map("bank_name")
+  branch        String?
+  balance       Float     @default(0)
+  status        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  transactions  Transaction[]
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  accountId     String          @map("account_id")
+  type          TransactionType
+  amount        Float
+  description   String?
+  referenceNo   String?         @map("reference_no")
+  relatedId     String?         @map("related_id")
+  relatedType   String?         @map("related_type")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  account       Account        @relation(fields: [accountId], references: [id])
+
+  @@map("transactions")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  titleBn   String?   @map("title_bn")
+  message   String
+  messageBn String?   @map("message_bn")
+  isRead    Boolean   @default(false) @map("is_read")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model Setting {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  value     String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model Lead {
+  id            String      @id @default(cuid())
+  leadId        String      @unique @map("lead_id")
+  customerName  String      @map("customer_name")
+  phone         String
+  notes         String?     @map("notes")
+  assignedToId  String?     @map("assigned_to_id")
+  createdById   String      @map("created_by_id")
+  stage         OrderStage  @default(LEAD) @map("stage")
+  quantity      Int?        @map("quantity")
+  productNote   String?     @map("product_note")
+  rating        Int         @default(0)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@map("leads")
+}
+
+enum AttendanceStatus {
+  CHECKED_IN
+  CHECKED_OUT
+  ON_BREAK
+  ON_LEAVE
+}
+
+model Attendance {
+  id            String           @id @default(cuid())
+  userId        String           @map("user_id")
+  date          DateTime         @default(now())
+  checkInTime   DateTime?        @map("check_in_time")
+  checkOutTime  DateTime?        @map("check_out_time")
+  breakStart    DateTime?        @map("break_start")
+  breakEnd      DateTime?        @map("break_end")
+  lunchStart    DateTime?        @map("lunch_start")
+  lunchEnd      DateTime?        @map("lunch_end")
+  status        AttendanceStatus @default(CHECKED_IN)
+  totalHours    Float            @default(0) @map("total_hours")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  user          User             @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+  @@map("attendances")
+}
+
+model DailyActivity {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  date        DateTime  @default(now())
+  activity    String    @map("activity")
+  notes       String?   @map("notes")
+  duration    Int?      @map("duration_minutes")
+  status      String    @default("PENDING") @map("status")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, date])
+  @@map("daily_activities")
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  EMERGENCY
+  VACATION
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  leaveType   LeaveType   @default(CASUAL) @map("leave_type")
+  startDate   DateTime    @map("start_date")
+  endDate     DateTime    @map("end_date")
+  days        Int         @default(1) @map("days")
+  reason      String      @map("reason")
+  status      LeaveStatus @default(PENDING)
+  approvedBy String?      @map("approved_by")
+  approvedAt DateTime?    @map("approved_at")
+  notes       String?     @map("notes")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("leave_requests")
+}
+
+model Holiday {
+  id          String    @id @default(cuid())
+  name        String    @map("name")
+  nameBn      String?   @map("name_bn")
+  date        DateTime  @map("date")
+  type        String    @default("GOVERNMENT") @map("type")
+  description String?   @map("description")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([date])
+  @@map("holidays")
+}
+
+model Salary {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  month         Int       @map("month")
+  year          Int       @map("year")
+  baseSalary    Float     @default(0) @map("base_salary")
+  bonus         Float     @default(0) @map("bonus")
+  deductions    Float     @default(0) @map("deductions")
+  netSalary     Float     @default(0) @map("net_salary")
+  rating        Int       @default(0) @map("rating")
+  performanceNote String?  @map("performance_note")
+  status        String    @default("PENDING") @map("status")
+  paidAt        DateTime? @map("paid_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, month, year])
+  @@index([userId, month, year])
+  @@map("salaries")
+}
