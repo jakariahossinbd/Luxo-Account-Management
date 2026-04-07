@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 type Account = {
   id: string;
@@ -34,6 +35,7 @@ type IncomeResponse = {
 };
 
 export default function AccountingIncomePage() {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<IncomeRow[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +133,7 @@ export default function AccountingIncomePage() {
     event.preventDefault();
 
     if (Number(form.amount) <= 0) {
-      setError('Amount must be greater than zero');
+      setError(t('admin.accounting.income.amountGreaterThanZero'));
       return;
     }
 
@@ -151,14 +153,14 @@ export default function AccountingIncomePage() {
 
       if (!response.ok) {
         const payload = await response.json();
-        throw new Error(payload.error || 'Failed to add income transaction');
+        throw new Error(payload.error || t('admin.accounting.income.saveFailed'));
       }
 
       setShowForm(false);
       setForm((prev) => ({ ...prev, amount: '0', description: '', referenceNo: '' }));
       await fetchIncome(startDate, endDate);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add income transaction');
+      setError(err instanceof Error ? err.message : t('admin.accounting.income.saveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -171,12 +173,12 @@ export default function AccountingIncomePage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Income Ledger</h1>
-            <p className="mt-2 text-slate-600">Track income entries and account credits.</p>
+            <h1 className="text-3xl font-bold text-slate-900">{t('admin.accounting.income.title')}</h1>
+            <p className="mt-2 text-slate-600">{t('admin.accounting.income.description')}</p>
           </div>
           <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
             <Plus className="h-4 w-4" />
-            Add Income
+            {t('admin.accounting.income.addIncome')}
           </button>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -205,28 +207,28 @@ export default function AccountingIncomePage() {
                 disabled={!startDate && !endDate}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                Clear
+                {t('admin.accounting.income.clearFilter')}
               </button>
               <button
                 onClick={onExport}
                 className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
               >
-                Export CSV
+                {t('admin.accounting.income.exportCSV')}
               </button>
             </div>
           </div>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-600">Total Income</p>
+            <p className="text-sm font-medium text-slate-600">{t('admin.accounting.income.totalIncome')}</p>
             <p className="mt-2 text-3xl font-bold text-slate-900">{formatTaka(totalIncome)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-600">This Month</p>
+            <p className="text-sm font-medium text-slate-600">{t('admin.accounting.income.thisMonth')}</p>
             <p className="mt-2 text-3xl font-bold text-slate-900">{formatTaka(thisMonthIncome)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-600">Transactions</p>
+            <p className="text-sm font-medium text-slate-600">{t('admin.accounting.income.transactionCount')}</p>
             <p className="mt-2 text-3xl font-bold text-slate-900">{rows.length}</p>
           </div>
         </div>
@@ -235,19 +237,19 @@ export default function AccountingIncomePage() {
 
         <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
           {loading ? (
-            <div className="p-8 text-center text-slate-600">Loading income records...</div>
+            <div className="p-8 text-center text-slate-600">{t('admin.accounting.income.loadingIncome')}</div>
           ) : rows.length === 0 ? (
-            <div className="p-8 text-center text-slate-600">No income transactions available.</div>
+            <div className="p-8 text-center text-slate-600">{t('admin.accounting.income.noIncome')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">Account</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">Description</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">Reference</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">{t('admin.accounting.income.account')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">{t('admin.accounting.income.descriptionColumn')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">{t('admin.accounting.income.referenceNo')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">{t('admin.accounting.income.amount')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-600">{t('admin.accounting.income.date')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,13 +272,13 @@ export default function AccountingIncomePage() {
           <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 p-4">
             <div className="w-full max-w-xl rounded-xl bg-white shadow-xl">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                <h2 className="text-lg font-semibold text-slate-900">Add Income Transaction</h2>
-                <button onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-700">Close</button>
+                <h2 className="text-lg font-semibold text-slate-900">{t('admin.accounting.income.createIncome')}</h2>
+                <button onClick={() => setShowForm(false)} className="text-slate-500 hover:text-slate-700">{t('admin.accounting.income.close')}</button>
               </div>
 
               <form onSubmit={onSubmit} className="space-y-4 px-5 py-5">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Account</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t('admin.accounting.income.selectAccount')}</label>
                   <select
                     value={form.accountId}
                     onChange={(e) => setForm((prev) => ({ ...prev, accountId: e.target.value }))}
@@ -292,7 +294,7 @@ export default function AccountingIncomePage() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Amount</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t('admin.accounting.income.amount')}</label>
                     <input
                       type="number"
                       min="0"
@@ -304,32 +306,32 @@ export default function AccountingIncomePage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Reference No</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t('admin.accounting.income.referenceNoLabel')}</label>
                     <input
                       value={form.referenceNo}
                       onChange={(e) => setForm((prev) => ({ ...prev, referenceNo: e.target.value }))}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      placeholder="Optional"
+                      placeholder={t('admin.accounting.income.descriptionPlaceholder')}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t('admin.accounting.income.descriptionLabel')}</label>
                   <textarea
                     value={form.description}
                     onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                     className="h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Optional"
+                    placeholder={t('admin.accounting.income.descriptionPlaceholder')}
                   />
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
                   <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                    Cancel
+                    {t('admin.accounting.income.cancelButton')}
                   </button>
                   <button type="submit" disabled={submitting} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
-                    {submitting ? 'Saving...' : 'Save Income'}
+                    {submitting ? t('admin.accounting.income.saving') : t('admin.accounting.income.createButton')}
                   </button>
                 </div>
               </form>
