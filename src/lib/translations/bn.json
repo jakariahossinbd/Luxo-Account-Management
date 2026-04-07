@@ -87,12 +87,19 @@
       "noRecentActivities": "সাম্প্রতিক কোনো কার্যকলাপ নেই"
     },
     "wallets": {
-      "title": "আমার ওয়ালেট",
+      "title": "ওয়ালেটস",
       "balance": "ব্যালেন্স",
-      "inflows": "আগত অর্থ",
-      "outflows": "বহির্গত অর্থ",
+      "inflows": "আয়",
+      "outflows": "ব্যয়",
       "increase": "১০০% বৃদ্ধি"
-    },    "staff": {
+    },
+    "invoice": {
+      "title": "চালান",
+      "totalInvoices": "মোট চালান",
+      "totalCollectionLabel": "মোট সংগ্রহ",
+      "createButton": "চালান তৈরি করুন"
+    },
+    "staff": {
       "managementTitle": "স্টাফ ব্যবস্থাপনা",
       "backToAdmin": "অ্যাডমিনে ফিরে যান",
       "staffList": "স্টাফ তালিকা",

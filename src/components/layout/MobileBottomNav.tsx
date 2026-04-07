@@ -1,71 +1,84 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FileText, Package, Home, Users, User } from 'lucide-react';
-import { useTranslation } from '@/hooks/useTranslation';
 
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const { t } = useTranslation();
+  const router = useRouter();
 
   const navItems = [
     {
       href: '/admin/accounting',
       icon: FileText,
-      label: t('admin.accounting.title'),
-      labelKey: 'admin.accounting.title',
+      shortLabel: 'Accounts',
     },
     {
       href: '/admin/products',
       icon: Package,
-      label: t('admin.products.title'),
-      labelKey: 'admin.products.title',
+      shortLabel: 'Products',
     },
     {
       href: '/admin',
       icon: Home,
-      label: t('common.dashboard'),
-      labelKey: 'common.dashboard',
-      isHome: true,
+      shortLabel: 'HOME',
+      isCenter: true,
     },
     {
       href: '/admin/sales',
       icon: Users,
-      label: t('admin.salesPayment.title'),
-      labelKey: 'admin.salesPayment.title',
+      shortLabel: 'Customers Led',
     },
     {
       href: '/admin/seller-manage',
       icon: User,
-      label: t('admin.sellerManage.title'),
-      labelKey: 'admin.sellerManage.title',
+      shortLabel: 'Saller Manage',
     },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-white border-t border-slate-200 safe-area-inset-bottom z-40">
-      <div className="flex justify-between items-center">
+    <nav className="fixed bottom-0 left-0 right-0 md:hidden z-40 border-t border-slate-200 bg-white px-3 py-1.5 safe-area-inset-bottom">
+      <ul className="relative mx-auto grid h-14 w-full grid-cols-5 items-center gap-0">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.isHome ? pathname === '/admin' : pathname.startsWith(item.href);
+          const isActive = item.isCenter ? pathname === '/admin' : pathname.startsWith(item.href);
+          const isCenter = item.isCenter;
 
           return (
-            <Link
+            <li
               key={item.href}
-              href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center py-3 px-2 text-xs transition-colors ${
-                isActive
-                  ? 'bg-orange-50 text-orange-600 border-t-2 border-orange-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+              className={`flex justify-center ${isCenter ? 'relative -top-4' : 'h-full items-center'}`}
             >
-              <Icon className="w-5 h-5 mb-1" />
-              <span className="truncate max-w-[60px] text-center">{item.label}</span>
-            </Link>
+              {isCenter ? (
+                <button
+                  type="button"
+                  onClick={() => router.push(item.href)}
+                  className="relative flex flex-col items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-xl shadow-orange-300/40 transition hover:shadow-orange-400/50 active:scale-95"
+                >
+                  <Icon className="w-5 h-5 scale-110" />
+                  <span className="text-[9px] font-bold text-white mt-1">
+                    {item.shortLabel}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.push(item.href)}
+                  className={`relative flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 py-0 transition ${
+                    isActive ? 'text-orange-500' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {isActive && <span className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-orange-500" />}
+                  <Icon className="w-5 h-5 scale-125" />
+                  <span className="max-w-[88px] truncate whitespace-nowrap text-center text-[9px] font-semibold leading-tight">
+                    {item.shortLabel}
+                  </span>
+                </button>
+              )}
+            </li>
           );
         })}
-      </div>
+      </ul>
     </nav>
   );
 }
