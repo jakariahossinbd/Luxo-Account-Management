@@ -21,7 +21,9 @@
     "settings": "Settings",
     "logout": "Logout",
     "profile": "Profile",
-    "language": "Language"
+    "language": "Language",
+    "today": "Today",
+    "products": "Products"
   },
   "seller": {
     "dashboard": "Seller Dashboard",
@@ -83,6 +85,13 @@
       "totalOrders": "Total Orders",
       "activeSellers": "Active Sellers",
       "noRecentActivities": "No recent activities"
+    },
+    "wallets": {
+      "title": "My Wallets",
+      "balance": "Balance",
+      "inflows": "Inflows",
+      "outflows": "Outflows",
+      "increase": "100% Increase"
     },
     "staff": {
       "managementTitle": "Staff Management",

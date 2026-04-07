@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { WalletsSection } from '@/components/dashboard/WalletsSection';
 import Link from 'next/link';
 import { useLanguageStore } from '@/store/language';
 import { t } from '@/lib/i18n';
@@ -70,6 +71,8 @@ export default function AdminDashboardPage() {
   return (
     <AdminLayout>
       <div className="space-y-8">
+        <WalletsSection />
+        
         <div>
           <h1 className="text-4xl font-bold text-slate-900">{t('admin.dashboard', language)}</h1>
           <p className="mt-2 text-lg text-slate-600">{t('admin.home.welcome', language)}</p>

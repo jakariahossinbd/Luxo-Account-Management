@@ -21,7 +21,9 @@
     "settings": "সেটিংস",
     "logout": "লগ আউট",
     "profile": "প্রোফাইল",
-    "language": "ভাষা"
+    "language": "ভাষা",
+    "today": "আজ",
+    "products": "পণ্য"
   },
   "seller": {
     "dashboard": "বিক্রেতা ড্যাশবোর্ড",
@@ -84,7 +86,13 @@
       "activeSellers": "সক্রিয় বিক্রেতা",
       "noRecentActivities": "সাম্প্রতিক কোনো কার্যকলাপ নেই"
     },
-    "staff": {
+    "wallets": {
+      "title": "আমার ওয়ালেট",
+      "balance": "ব্যালেন্স",
+      "inflows": "আগত অর্থ",
+      "outflows": "বহির্গত অর্থ",
+      "increase": "১০০% বৃদ্ধি"
+    },    "staff": {
       "managementTitle": "স্টাফ ব্যবস্থাপনা",
       "backToAdmin": "অ্যাডমিনে ফিরে যান",
       "staffList": "স্টাফ তালিকা",
