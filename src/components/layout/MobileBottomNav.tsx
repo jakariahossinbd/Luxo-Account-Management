@@ -11,7 +11,7 @@ export function MobileBottomNav() {
     {
       href: '/admin/accounting',
       icon: FileText,
-      shortLabel: 'Accounts',
+      shortLabel: 'Account',
     },
     {
       href: '/admin/products',
@@ -27,12 +27,12 @@ export function MobileBottomNav() {
     {
       href: '/admin/sales',
       icon: Users,
-      shortLabel: 'Customers Led',
+      shortLabel: 'Sales',
     },
     {
       href: '/admin/seller-manage',
       icon: User,
-      shortLabel: 'Saller Manage',
+      shortLabel: 'Sellers',
     },
   ];
 
@@ -70,7 +70,7 @@ export function MobileBottomNav() {
                 >
                   {isActive && <span className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-orange-500" />}
                   <Icon className="w-5 h-5 scale-125" />
-                  <span className="max-w-[88px] truncate whitespace-nowrap text-center text-[9px] font-semibold leading-tight">
+                  <span className="max-w-[70px] truncate whitespace-nowrap text-center text-[9px] font-semibold leading-tight">
                     {item.shortLabel}
                   </span>
                 </button>

@@ -68,7 +68,8 @@ while ($true) {
 
         Write-Log "Starting dev server..."
         try {
-            $serverProcess = Start-Process -FilePath "npm" -ArgumentList "run dev" -PassThru -NoNewWindow -RedirectStandardOutput "$ProjectPath\npm.log"
+            $npmLog = Join-Path $ProjectPath 'npm.log'
+            $serverProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev" -PassThru -WindowStyle Hidden -RedirectStandardOutput $npmLog -RedirectStandardError $npmLog
             Write-Log "Server started with PID: $($serverProcess.Id)"
             Start-Sleep -Seconds 10
         }

@@ -73,11 +73,11 @@ type CategoriesResponse = {
 };
 
 const bottomTabs = [
-  { key: 'orders', icon: 'orders', label: 'Order & Invoice', isCenter: false },
+  { key: 'orders', icon: 'orders', label: 'Orders', isCenter: false },
   { key: 'products', icon: 'products', label: 'Products', isCenter: false },
   { key: 'home', icon: 'home', label: 'HOME', isCenter: true },
-  { key: 'customers', icon: 'customers', label: 'Customers Led', isCenter: false },
-  { key: 'profile', icon: 'profile', label: 'Seller Profile', isCenter: false },
+  { key: 'customers', icon: 'customers', label: 'Customers', isCenter: false },
+  { key: 'profile', icon: 'profile', label: 'Profile', isCenter: false },
 ] as const;
 
 const fallbackOrders: OrderItem[] = [
@@ -685,7 +685,7 @@ export default function SellerDashboard() {
                   >
                     {isActive && <span className="absolute -top-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-orange-500" />}
                     <span className="scale-125">{iconFor(item.icon)}</span>
-                    <span className="max-w-[88px] truncate whitespace-nowrap text-center text-[9px] font-semibold leading-tight">
+                    <span className="max-w-[70px] truncate whitespace-nowrap text-center text-[9px] font-semibold leading-tight">
                       {item.label}
                     </span>
                   </button>

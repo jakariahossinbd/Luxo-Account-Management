@@ -59,7 +59,7 @@ export default function AdminDashboardPage() {
       title: t('admin.menu.sellerManage', language),
       icon: Users,
       href: '/admin/seller-manage',
-      shortTitle: isBangla ? 'সেলার' : 'Saller',
+      shortTitle: isBangla ? 'সেলার' : 'Seller',
       iconColor: 'text-cyan-500',
     },
   ];
