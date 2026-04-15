@@ -168,6 +168,8 @@ model Employee {
   designation   String
   designationBn String?   @map("designation_bn")
   salary        Float     @default(0)
+  salesTargetAmount     Float     @default(0) @map("sales_target_amount")
+  monthlyExpensesAmount Float     @default(0) @map("monthly_expenses_amount")
   hireDate      DateTime? @map("hire_date")
   status        Boolean   @default(true)
   createdAt     DateTime  @default(now()) @map("created_at")

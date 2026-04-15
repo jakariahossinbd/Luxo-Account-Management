@@ -15,6 +15,10 @@ export async function GET(request: Request) {
     const date = searchParams.get('date');
 
     const where: any = {};
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(todayStart);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     if (userId) {
       where.userId = userId;
@@ -36,6 +40,14 @@ export async function GET(request: Request) {
           where: where.date ? { date: where.date } : undefined,
           orderBy: { date: 'desc' },
           take: 30,
+        },
+        activities: {
+          where: {
+            activity: 'ATTENDANCE_VERIFICATION',
+            date: { gte: todayStart, lt: tomorrow },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       },
       orderBy: { name: 'asc' },

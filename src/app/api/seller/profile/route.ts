@@ -22,6 +22,14 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const employee = await prisma.employee.findUnique({
+      where: { userId: session.user.id },
+      select: {
+        id: true,
+        employeeCode: true,
+      },
+    });
+
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -35,6 +43,11 @@ export async function GET(request: NextRequest) {
         phone: user.phone || '',
         address: user.address || '',
         image: user.avatar || '',
+        sellerId: employee?.employeeCode || employee?.id || session.user.id,
+        employeeCode: employee?.employeeCode || '',
+        // Keep safe defaults until DB/client is aligned with extended employee fields.
+        salesTargetAmount: 0,
+        monthlyExpensesAmount: 0,
       },
     });
   } catch (error) {

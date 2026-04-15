@@ -13,6 +13,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useThemeStore } from '@/store/theme';
 
 export interface AdminSidebarProps {
   isOpen?: boolean;
@@ -22,6 +23,8 @@ export interface AdminSidebarProps {
 export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
+  const theme = useThemeStore((state) => state.theme);
+  const isDark = theme === 'dark';
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const currentPath = pathname ?? '';
 
@@ -104,14 +107,14 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
       {/* Overlay for mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 lg:hidden"
+          className={`fixed inset-0 z-20 backdrop-blur-sm lg:hidden ${isDark ? 'bg-black/55' : 'bg-slate-900/35'}`}
           onClick={onClose}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-16 z-30 h-[calc(100vh-64px)] w-64 overflow-y-auto border-r border-slate-200 bg-white transition-transform duration-300 lg:left-0 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed left-0 top-[73px] z-30 h-[calc(100vh-73px)] w-64 overflow-y-auto border-r backdrop-blur-xl transition-transform duration-300 ${isDark ? 'border-white/10 bg-slate-900/62 shadow-[0_14px_34px_rgba(2,6,23,0.45)]' : 'border-white/53 bg-white/77 shadow-[0_10px_30px_rgba(2,6,23,0.10)]'} lg:left-0 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <nav className="space-y-1 p-4 lg:p-6">
           {menuItems.map((item) => {
@@ -124,8 +127,8 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
                 <button
                   onClick={() => setExpandedMenu(isExpanded ? null : item.id)}
                   className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition ${isActive
-                    ? 'bg-orange-50 text-orange-600 font-semibold'
-                    : 'text-slate-700 hover:bg-slate-50'
+                    ? `${isDark ? 'bg-orange-400/18 text-orange-200' : 'bg-orange-500/15 text-orange-600'} font-semibold`
+                    : `${isDark ? 'text-slate-200 hover:bg-white/10' : 'text-slate-700 hover:bg-white/65'}`
                   }`}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
@@ -146,8 +149,8 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
                         href={subitem.href}
                         className={`block rounded px-4 py-2 text-sm transition ${
                           currentPath === subitem.href
-                            ? 'bg-orange-100 text-orange-600 font-semibold'
-                            : 'text-slate-600 hover:bg-slate-50'
+                            ? `${isDark ? 'bg-orange-400/20 text-orange-100' : 'bg-orange-500/18 text-orange-700'} font-semibold`
+                            : `${isDark ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-white/65'}`
                         }`}
                       >
                         {subitem.label}

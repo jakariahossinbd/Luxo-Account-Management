@@ -1,7 +1,7 @@
 'use client';
 
-import SellerDashboard from '@/components/features/dashboard/SellerDashboard';
+import SellerDashboardHome from '@/components/features/dashboard/SellerDashboardHome';
 
 export default function SellerPage() {
-  return <SellerDashboard />;
+  return <SellerDashboardHome />;
 }

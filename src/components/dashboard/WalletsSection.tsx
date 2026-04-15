@@ -1,14 +1,53 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useTranslation } from '@/hooks/useTranslation';
+
+type WalletsApiResponse = {
+  success?: boolean;
+  data?: {
+    balance?: number;
+    inflows?: number;
+    outflows?: number;
+  };
+};
 
 export function WalletsSection() {
   const { t, language } = useTranslation();
   const isBangla = language === 'bn';
+  const [wallets, setWallets] = useState({
+    balance: 0,
+    inflows: 0,
+    outflows: 0,
+  });
 
-  const balance = 0.0;
-  const inflows = 0.0;
-  const outflows = 0.0;
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWallets() {
+      try {
+        const response = await fetch('/api/admin/wallets', { cache: 'no-store' });
+        if (!response.ok) return;
+
+        const payload = (await response.json()) as WalletsApiResponse;
+        if (!payload.success || !payload.data || cancelled) return;
+
+        setWallets({
+          balance: Number(payload.data.balance) || 0,
+          inflows: Number(payload.data.inflows) || 0,
+          outflows: Number(payload.data.outflows) || 0,
+        });
+      } catch {
+        // Keep defaults when API is unavailable.
+      }
+    }
+
+    loadWallets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const formatCurrency = (value: number) => {
     const symbol = '৳';
@@ -36,7 +75,7 @@ export function WalletsSection() {
         <div className="mt-2 text-center">
           <p className="text-[19px] font-medium text-slate-800 leading-none">
             <span className="text-slate-800">{t('admin.wallets.balance') || 'Balance'} : </span>
-            <span className="text-[21px] font-semibold text-blue-600">{formatCurrency(balance)}</span>
+            <span className="text-[21px] font-semibold text-blue-600">{formatCurrency(wallets.balance)}</span>
           </p>
         </div>
 
@@ -46,8 +85,8 @@ export function WalletsSection() {
               {t('admin.wallets.inflows') || 'Inflows'}
             </p>
             <div className="py-3">
-              <p className="text-[18px] font-semibold text-emerald-600 leading-none mb-2">{formatCurrency(inflows)}</p>
-              <p className="text-[14px] font-medium text-sky-600 leading-none">{t('admin.wallets.increase') || '100% Increase'}</p>
+              <p className="text-[18px] font-semibold text-emerald-600 leading-none mb-2">{formatCurrency(wallets.inflows)}</p>
+              <p className="text-[13px] font-medium text-sky-600 leading-none">Seller delivery only</p>
             </div>
           </div>
 
@@ -56,8 +95,8 @@ export function WalletsSection() {
               {t('admin.wallets.outflows') || 'Outflows'}
             </p>
             <div className="py-3">
-              <p className="text-[18px] font-semibold text-red-600 leading-none mb-2">{formatCurrency(outflows)}</p>
-              <p className="text-[14px] font-medium text-fuchsia-500 leading-none">{t('admin.wallets.increase') || '100% Increase'}</p>
+              <p className="text-[18px] font-semibold text-red-600 leading-none mb-2">{formatCurrency(wallets.outflows)}</p>
+              <p className="text-[13px] font-medium text-fuchsia-500 leading-none">Admin expense records only</p>
             </div>
           </div>
         </div>

@@ -10,6 +10,8 @@ interface Seller {
   id: string;
   userId: string;
   employeeCode?: string;
+  salesTargetAmount?: number;
+  monthlyExpensesAmount?: number;
   user?: {
     name: string;
     email: string;
@@ -37,6 +39,29 @@ export default function SellerManagePage() {
   const [pagination, setPagination] = useState({ page: 1, limit: 10, pages: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [editingSeller, setEditingSeller] = useState<Seller | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    sellerId: '',
+    designation: 'Seller',
+    salesTargetAmount: '1',
+    monthlyExpensesAmount: '0',
+  });
+  const [editForm, setEditForm] = useState({
+    salesTargetAmount: '1',
+    monthlyExpensesAmount: '0',
+  });
+
+  const normalizeSalesTargetCount = (value: string) => {
+    const parsed = Number.parseInt(value || '', 10);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.min(99, Math.max(1, parsed));
+  };
 
   const fetchSellers = async (page = 1) => {
     try {
@@ -103,6 +128,87 @@ export default function SellerManagePage() {
     }
   };
 
+  const handleCreateSeller = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim()) {
+      toastError('Name, email and password are required.');
+      return;
+    }
+
+    try {
+      setCreating(true);
+      const response = await fetch('/api/admin/seller-manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || t('messages.operationFailed'));
+      }
+
+      success('Seller created successfully.');
+      setCreateForm({
+        name: '',
+        email: '',
+        password: '',
+        phone: '',
+        sellerId: '',
+        designation: 'Seller',
+        salesTargetAmount: '1',
+        monthlyExpensesAmount: '0',
+      });
+      fetchSellers(pagination.page);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : t('messages.operationFailed'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const openEditSeller = (seller: Seller) => {
+    setEditingSeller(seller);
+    setEditForm({
+      salesTargetAmount: String(seller.salesTargetAmount ?? 1),
+      monthlyExpensesAmount: String(seller.monthlyExpensesAmount ?? 0),
+    });
+  };
+
+  const handleUpdateSeller = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!editingSeller) return;
+
+    try {
+      setSavingEdit(true);
+      const response = await fetch('/api/admin/seller-manage', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingSeller.id,
+          salesTargetAmount: normalizeSalesTargetCount(editForm.salesTargetAmount),
+          monthlyExpensesAmount: Number(editForm.monthlyExpensesAmount) || 0,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || t('messages.operationFailed'));
+      }
+
+      success('Seller updated successfully.');
+      setEditingSeller(null);
+      fetchSellers(pagination.page);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : t('messages.operationFailed'));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const formatDate = (date: string) => new Date(date).toLocaleDateString('en-BD');
 
   const activeSellers = sellers.filter(s => s.status).length;
@@ -115,6 +221,83 @@ export default function SellerManagePage() {
           <h1 className="text-3xl font-bold text-slate-900">{t('admin.sellerManage.managementTitle')}</h1>
           <p className="mt-2 text-slate-600">{t('admin.sellerManage.managementSubtitle')}</p>
         </div>
+
+        <form onSubmit={handleCreateSeller} className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Create Seller</h2>
+              <p className="text-sm text-slate-500">Create a seller account and assign a custom Seller ID.</p>
+            </div>
+            <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-600">Seller ID = employee code</span>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <input
+              value={createForm.name}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="Full name"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.email}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))}
+              placeholder="Email"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.password}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, password: event.target.value }))}
+              placeholder="Password"
+              type="password"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.phone}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, phone: event.target.value }))}
+              placeholder="Phone number"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.sellerId}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, sellerId: event.target.value }))}
+              placeholder="Custom Seller ID"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.designation}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, designation: event.target.value }))}
+              placeholder="Designation"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.salesTargetAmount}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, salesTargetAmount: event.target.value }))}
+              placeholder="Sales Target Count (01-99)"
+              type="number"
+              min={1}
+              max={99}
+              step={1}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+            <input
+              value={createForm.monthlyExpensesAmount}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, monthlyExpensesAmount: event.target.value }))}
+              placeholder="Monthly Expenses Amount"
+              inputMode="numeric"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <button
+              type="submit"
+              disabled={creating}
+              className="rounded-lg bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {creating ? 'Creating...' : 'Create Seller'}
+            </button>
+          </div>
+        </form>
 
         <div className="grid gap-4 lg:grid-cols-4">
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -134,6 +317,54 @@ export default function SellerManagePage() {
             <p className="mt-2 text-3xl font-bold text-slate-900">{pagination.total}</p>
           </div>
         </div>
+
+        {editingSeller ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
+            <form onSubmit={handleUpdateSeller} className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+              <div className="mb-5">
+                <h3 className="text-xl font-semibold text-slate-900">Edit Seller Defaults</h3>
+                <p className="mt-1 text-sm text-slate-500">Update the fixed target and expense values for this seller.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <input
+                  value={editForm.salesTargetAmount}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, salesTargetAmount: event.target.value }))}
+                  placeholder="Sales Target Count (01-99)"
+                  type="number"
+                  min={1}
+                  max={99}
+                  step={1}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                />
+                <input
+                  value={editForm.monthlyExpensesAmount}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, monthlyExpensesAmount: event.target.value }))}
+                  placeholder="Monthly Expenses Amount"
+                  inputMode="numeric"
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingSeller(null)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-70"
+                >
+                  {savingEdit ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
 
         <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="p-6">
@@ -180,7 +411,7 @@ export default function SellerManagePage() {
                       <td className="px-6 py-4 text-sm text-slate-600">{formatDate(seller.createdAt)}</td>
                       <td className="px-6 py-4 text-sm">
                         <div className="flex gap-2">
-                          <button className="text-blue-600 hover:text-blue-700" title={t('common.edit')}>
+                          <button onClick={() => openEditSeller(seller)} className="text-blue-600 hover:text-blue-700" title={t('common.edit')}>
                             <Edit2 className="h-4 w-4" />
                           </button>
                           <button onClick={() => handleDelete(seller.id)} className="text-red-600 hover:text-red-700" title={t('common.delete')}>

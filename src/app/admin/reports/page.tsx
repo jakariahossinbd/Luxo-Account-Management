@@ -9,9 +9,21 @@ interface ReportStats {
   totalSales: number;
   totalPurchases: number;
   totalExpenses: number;
+  walletInflows: number;
+  walletOutflows: number;
+  walletBalance: number;
   totalProducts: number;
   totalSellers: number;
   averageOrderValue: number;
+}
+
+interface WalletsResponse {
+  success?: boolean;
+  data?: {
+    inflows?: number;
+    outflows?: number;
+    balance?: number;
+  };
 }
 
 interface ApiListResponse<T> {
@@ -30,6 +42,9 @@ export default function ReportsPage() {
     totalSales: 0,
     totalPurchases: 0,
     totalExpenses: 0,
+    walletInflows: 0,
+    walletOutflows: 0,
+    walletBalance: 0,
     totalProducts: 0,
     totalSellers: 0,
     averageOrderValue: 0,
@@ -41,12 +56,13 @@ export default function ReportsPage() {
     try {
       setLoading(true);
       // For now, we'll aggregate data from different endpoints
-      const [salesRes, purchaseRes, expenseRes, productRes, sellerRes] = await Promise.all([
+      const [salesRes, purchaseRes, expenseRes, productRes, sellerRes, walletsRes] = await Promise.all([
         fetch('/api/admin/sales?limit=1000'),
         fetch('/api/admin/purchase?limit=1000'),
         fetch('/api/admin/accounting?limit=1000'),
         fetch('/api/admin/products?limit=1000'),
         fetch('/api/admin/seller-manage?limit=1000'),
+        fetch('/api/admin/wallets'),
       ]);
 
       const salesData: ApiListResponse<{ total: number }> = await salesRes.json();
@@ -54,6 +70,7 @@ export default function ReportsPage() {
       const expenseData: ApiListResponse<{ amount: number }> = await expenseRes.json();
       const productData: ApiListResponse<unknown> = await productRes.json();
       const sellerData: ApiListResponse<unknown> = await sellerRes.json();
+      const walletData: WalletsResponse = await walletsRes.json();
 
       const totalSalesAmount = salesData.data.reduce((sum: number, s) => sum + s.total, 0);
       const totalPurchasesAmount = purchaseData.data.reduce((sum: number, p) => sum + p.total, 0);
@@ -66,6 +83,9 @@ export default function ReportsPage() {
         totalSales: totalSalesAmount,
         totalPurchases: totalPurchasesAmount,
         totalExpenses: totalExpensesAmount,
+        walletInflows: Number(walletData.data?.inflows) || 0,
+        walletOutflows: Number(walletData.data?.outflows) || 0,
+        walletBalance: Number(walletData.data?.balance) || 0,
         totalProducts: totalProductsCount,
         totalSellers: totalSellersCount,
         averageOrderValue: avgOrderValue,
@@ -146,6 +166,23 @@ export default function ReportsPage() {
                     <BarChart3 className="h-6 w-6 text-red-600" />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-sm font-medium text-slate-600">Wallet Inflows (Seller Delivery)</p>
+                <p className="mt-2 text-3xl font-bold text-emerald-600">{formatTaka(stats.walletInflows)}</p>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-sm font-medium text-slate-600">Wallet Outflows (Admin Expenses)</p>
+                <p className="mt-2 text-3xl font-bold text-red-600">{formatTaka(stats.walletOutflows)}</p>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-sm font-medium text-slate-600">Wallet Balance</p>
+                <p className={`mt-2 text-3xl font-bold ${stats.walletBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatTaka(stats.walletBalance)}</p>
               </div>
             </div>
 

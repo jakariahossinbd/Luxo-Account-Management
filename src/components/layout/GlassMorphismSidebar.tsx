@@ -13,6 +13,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useThemeStore } from '@/store/theme';
 
 export interface GlassMorphismSidebarProps {
   isOpen?: boolean;
@@ -23,8 +24,17 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
+  const theme = useThemeStore((state) => state.theme);
+  const isDark = theme === 'dark';
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const currentPath = pathname ?? '';
+
+  const panelToneClass = isDark
+    ? 'from-slate-900/66 via-slate-900/58 to-slate-800/64 border-white/12 shadow-[0_14px_34px_rgba(2,6,23,0.45)]'
+    : 'from-white/77 via-slate-50/71 to-white/69 border-white/48 shadow-[0_10px_30px_rgba(2,6,23,0.10)]';
+
+  const labelClass = isDark ? 'text-slate-200' : 'text-slate-700';
+  const inactiveIconClass = isDark ? 'text-slate-200/90' : 'text-slate-600';
 
   const menuItems = [
     {
@@ -104,63 +114,15 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm lg:hidden"
+          className={`fixed inset-0 z-20 backdrop-blur-sm lg:hidden ${isDark ? 'bg-black/60' : 'bg-slate-900/35'}`}
           onClick={onClose}
         />
       )}
 
       <aside
-        className={`fixed left-0 top-[72px] z-30 h-[calc(100vh-72px)] w-64 overflow-y-auto transition-transform duration-300 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        bg-gradient-to-b from-slate-900/62 via-slate-900/52 to-slate-800/62 lg:from-slate-900/82 lg:via-slate-800/76 lg:to-slate-900/84 backdrop-blur-xl border-r border-white/15 lg:border-white/12 shadow-[0_10px_30px_rgba(2,6,23,0.16)]`}
+        className={`fixed left-0 top-[73px] z-30 h-[calc(100vh-73px)] w-64 overflow-y-auto transition-transform duration-300 lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        bg-gradient-to-b border-r backdrop-blur-xl ${panelToneClass}`}
       >
-        <style jsx>{`
-          aside {
-            background-color: rgba(15, 23, 42, 0.72);
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.14),
-              inset 0 -1px 0 rgba(255, 255, 255, 0.05),
-              -10px 0 30px rgba(2, 6, 23, 0.34);
-            background-image:
-              radial-gradient(circle at 16% 8%, rgba(255, 255, 255, 0.13), transparent 35%),
-              radial-gradient(circle at 90% 90%, rgba(249, 115, 22, 0.08), transparent 32%);
-            -webkit-backdrop-filter: blur(20px) saturate(120%);
-            backdrop-filter: blur(20px) saturate(120%);
-          }
-
-          @media (min-width: 1024px) {
-            aside {
-              background-color: rgba(15, 23, 42, 0.80);
-              -webkit-backdrop-filter: blur(16px) saturate(120%);
-              backdrop-filter: blur(16px) saturate(120%);
-              box-shadow:
-                inset 0 1px 0 rgba(255, 255, 255, 0.10),
-                inset 0 -1px 0 rgba(2, 6, 23, 0.24),
-                10px 0 30px rgba(2, 6, 23, 0.22);
-              background-image:
-                linear-gradient(180deg, rgba(15, 23, 42, 0.24) 0%, rgba(15, 23, 42, 0.12) 50%, rgba(15, 23, 42, 0.20) 100%),
-                radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.06), transparent 32%),
-                radial-gradient(circle at 90% 90%, rgba(249, 115, 22, 0.05), transparent 30%);
-            }
-          }
-
-          aside::-webkit-scrollbar {
-            width: 6px;
-          }
-
-          aside::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
-          }
-
-          aside::-webkit-scrollbar-thumb {
-            background: rgba(249, 115, 22, 0.3);
-            border-radius: 3px;
-          }
-
-          aside::-webkit-scrollbar-thumb:hover {
-            background: rgba(249, 115, 22, 0.6);
-          }
-        `}</style>
-
         <nav className="space-y-1 p-4 pb-24 lg:p-6 lg:pb-10">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -178,8 +140,8 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
                     w-full flex items-center gap-3 rounded-xl px-4 py-3 pr-11 text-left
                     transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
                     ${isActive
-                      ? 'bg-gradient-to-r from-orange-500/30 via-orange-400/20 to-amber-300/12 text-white border border-orange-200/40 font-semibold'
-                      : 'text-slate-100 hover:bg-gradient-to-r hover:from-orange-500/14 hover:via-orange-400/10 hover:to-amber-300/6 border border-transparent hover:border-orange-200/28 lg:text-white lg:hover:border-orange-200/24'
+                      ? `${isDark ? 'bg-gradient-to-r from-orange-500/26 via-orange-400/18 to-amber-300/12 text-orange-50 border-orange-200/34' : 'bg-gradient-to-r from-orange-500/24 via-orange-400/16 to-amber-300/10 text-orange-700 border-orange-300/40'} border font-semibold`
+                      : `${labelClass} hover:bg-gradient-to-r hover:from-orange-500/12 hover:via-orange-400/8 hover:to-amber-300/6 border border-transparent ${isDark ? 'hover:text-slate-100 hover:border-orange-200/24' : 'hover:border-orange-200/36'}`
                     }
                   `}
                   style={{
@@ -196,7 +158,7 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
                     (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
                   }}
                 >
-                  <Icon className={`h-5 w-5 shrink-0 transition-all duration-300 ${isActive ? 'text-orange-100' : 'text-slate-100/85 lg:text-white/88'}`} />
+                  <Icon className={`h-5 w-5 shrink-0 transition-all duration-300 ${isActive ? (isDark ? 'text-orange-100' : 'text-orange-600') : inactiveIconClass}`} />
                   <span className="flex-1 truncate text-sm font-medium leading-tight" title={item.label}>{item.label}</span>
                 </button>
 
@@ -204,13 +166,13 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
                   <button
                     type="button"
                     onClick={() => setExpandedMenu(isExpanded ? null : item.id)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-100/75 transition hover:bg-white/10 lg:text-white/78"
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 transition ${isDark ? 'text-slate-200/80 hover:bg-white/10' : 'text-slate-600 hover:bg-black/5'}`}
                     aria-label={isExpanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
                   >
                     <ChevronDown
                       className={`h-4 w-4 transition-transform duration-300 ${
                         isExpanded ? 'rotate-180' : ''
-                      } ${isActive ? 'text-orange-100' : 'text-slate-100/75 lg:text-white/78'}`}
+                      } ${isActive ? (isDark ? 'text-orange-100' : 'text-orange-600') : (isDark ? 'text-slate-200/80' : 'text-slate-600')}`}
                     />
                   </button>
                 )}
@@ -228,8 +190,8 @@ export function GlassMorphismSidebar({ isOpen = true, onClose }: GlassMorphismSi
                           block truncate rounded-lg px-4 py-2 text-sm transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
                           ${
                             currentPath === subitem.href
-                              ? 'bg-gradient-to-r from-orange-500/26 via-orange-400/18 to-amber-300/10 text-orange-50 font-semibold border border-orange-200/34 shadow-[inset_0_0_16px_rgba(251,146,60,0.22)]'
-                              : 'text-slate-100/75 hover:text-slate-100 hover:bg-gradient-to-r hover:from-orange-500/12 hover:via-orange-400/8 hover:to-amber-300/6 border border-transparent hover:border-orange-200/22 lg:text-white lg:hover:text-white lg:hover:border-orange-200/20'
+                              ? `${isDark ? 'bg-gradient-to-r from-orange-500/24 via-orange-400/16 to-amber-300/10 text-orange-50 border-orange-200/30' : 'bg-gradient-to-r from-orange-500/20 via-orange-400/14 to-amber-300/10 text-orange-700 border-orange-300/34'} font-semibold border shadow-[inset_0_0_16px_rgba(251,146,60,0.16)]`
+                              : `${isDark ? 'text-slate-200/80 hover:text-slate-100 hover:border-orange-200/20' : 'text-slate-600 hover:text-slate-800 hover:border-orange-200/24'} hover:bg-gradient-to-r hover:from-orange-500/12 hover:via-orange-400/8 hover:to-amber-300/6 border border-transparent`
                           }
                         `}
                         title={subitem.label}

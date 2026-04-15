@@ -378,7 +378,7 @@ export default function SellerDashboard() {
             </button>
 
             <div className="min-w-0 w-[118px] shrink-0">
-              <img src="/logo.png" alt="Luxo" className="seller-logo h-16 w-auto object-contain" />
+              <img src="/luxo-logo.svg" alt="Luxo" className="seller-logo h-16 w-auto object-contain" />
             </div>
           </div>
 
