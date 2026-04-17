@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
@@ -39,7 +39,7 @@ export default function AccountingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchExpenses = async (page = 1) => {
+  const fetchExpenses = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -58,11 +58,11 @@ export default function AccountingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchExpenses();
-  }, []);
+    void fetchExpenses();
+  }, [fetchExpenses]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.pages) {

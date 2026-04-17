@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
@@ -63,7 +63,7 @@ export default function SellerManagePage() {
     return Math.min(99, Math.max(1, parsed));
   };
 
-  const fetchSellers = async (page = 1) => {
+  const fetchSellers = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -82,11 +82,11 @@ export default function SellerManagePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchSellers();
-  }, []);
+    void fetchSellers();
+  }, [fetchSellers]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.pages) {

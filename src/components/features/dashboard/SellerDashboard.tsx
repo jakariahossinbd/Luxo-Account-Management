@@ -378,6 +378,7 @@ export default function SellerDashboard() {
             </button>
 
             <div className="min-w-0 w-[118px] shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/luxo-logo.svg" alt="Luxo" className="seller-logo h-16 w-auto object-contain" />
             </div>
           </div>
@@ -391,6 +392,7 @@ export default function SellerDashboard() {
             <LanguageSwitcher />
             <div className="flex items-center gap-2">
               {profile.image ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={profile.image}
                   alt={displayName}
@@ -631,6 +633,7 @@ export default function SellerDashboard() {
             {filteredInventory.slice(0, 4).map((item) => (
               <article key={item.code} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-2.5">
                 {item.image ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={item.image} alt={item.name} className="h-11 w-11 rounded-xl object-cover" referrerPolicy="no-referrer" />
                 ) : <div className="grid h-11 w-11 place-items-center rounded-xl bg-orange-100 text-orange-600">PK</div>}
                 <div className="min-w-0 flex-1">

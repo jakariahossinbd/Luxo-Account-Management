@@ -143,7 +143,7 @@ export function SupportChatWidget({ role, displayName, senderId }: SupportChatWi
 
         return message.senderRole === 'admin' && message.recipientId === senderId && !message.readBySeller;
       }).length,
-    [chatMessages, role]
+    [chatMessages, role, senderId]
   );
 
   useEffect(() => {
@@ -392,6 +392,7 @@ export function SupportChatWidget({ role, displayName, senderId }: SupportChatWi
                         <div className="mt-2">
                           {message.attachment.type.startsWith('image/') ? (
                             <a href={message.attachment.dataUrl} target="_blank" rel="noreferrer" className="block">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={message.attachment.dataUrl}
                                 alt={message.attachment.name}
@@ -440,6 +441,7 @@ export function SupportChatWidget({ role, displayName, senderId }: SupportChatWi
                   </button>
                 </div>
                 {isImageAttachment ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={attachment.dataUrl} alt={attachment.name} className="mt-2 max-h-24 rounded-lg object-cover" />
                 ) : null}
               </div>

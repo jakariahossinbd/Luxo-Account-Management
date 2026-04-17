@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -52,7 +52,7 @@ export default function PurchaseSuppliersPage() {
 
   const isEdit = Boolean(form.id);
 
-  const fetchSuppliers = async (page: number = 1, searchQuery: string = '') => {
+  const fetchSuppliers = useCallback(async (page: number = 1, searchQuery: string = '') => {
     try {
       setLoading(true);
       setError(null);
@@ -71,11 +71,11 @@ export default function PurchaseSuppliersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void fetchSuppliers(1, query);
-  }, []);
+  }, [fetchSuppliers, query]);
 
   const onSearchChange = (value: string) => {
     setQuery(value);

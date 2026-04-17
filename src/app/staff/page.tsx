@@ -132,7 +132,7 @@ export default function StaffPage() {
 
       {activeTab === 'attendance' && (
         <div style={{ background: 'white', padding: '20px', borderRadius: '8px' }}>
-          <h2>Today's Attendance</h2>
+          <h2>Today&apos;s Attendance</h2>
           
           {!attendance?.checkInTime ? (
             <button onClick={() => handleAttendance('checkIn')} style={{ width: '100%', padding: '20px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>☀️ Check In (Office In)</button>

@@ -43,6 +43,7 @@ export function LanguageSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={languageFlags[currentLanguage].src}
           alt={languageFlags[currentLanguage].alt}
@@ -71,6 +72,7 @@ export function LanguageSwitcher() {
                 aria-selected={isActive}
               >
                 <span className="flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={languageFlags[key].src}
                     alt={languageFlags[key].alt}

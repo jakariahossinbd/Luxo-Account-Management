@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -61,7 +61,7 @@ export function SaleDetailsModal({ saleId, isOpen, onClose }: SaleDetailsModalPr
     [productId, products]
   );
 
-  const loadSale = async () => {
+  const loadSale = useCallback(async () => {
     if (!saleId) return;
 
     try {
@@ -77,9 +77,9 @@ export function SaleDetailsModal({ saleId, isOpen, onClose }: SaleDetailsModalPr
     } finally {
       setLoading(false);
     }
-  };
+  }, [saleId, t, toastError]);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/products?limit=1000', { cache: 'no-store' });
       if (!response.ok) return;
@@ -94,13 +94,13 @@ export function SaleDetailsModal({ saleId, isOpen, onClose }: SaleDetailsModalPr
     } catch {
       // keep modal usable even if product lookup fails
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !saleId) return;
     void loadSale();
     void loadProducts();
-  }, [isOpen, saleId]);
+  }, [isOpen, loadProducts, loadSale, saleId]);
 
   const addItem = async () => {
     if (!saleId || !productId) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -53,7 +53,7 @@ export default function AccountingIncomePage() {
     referenceNo: '',
   });
 
-  const fetchIncome = async (fromDate: string = '', toDate: string = '') => {
+  const fetchIncome = useCallback(async (fromDate: string = '', toDate: string = '') => {
     try {
       setLoading(true);
       setError(null);
@@ -66,19 +66,17 @@ export default function AccountingIncomePage() {
       setRows(payload.data || []);
       setAccounts(payload.accounts || []);
       setTotalIncome(payload.meta?.totalIncome || 0);
-      if (!form.accountId && payload.accounts?.length) {
-        setForm((prev) => ({ ...prev, accountId: payload.accounts[0].id }));
-      }
+      setForm((prev) => (prev.accountId || !payload.accounts?.length ? prev : { ...prev, accountId: payload.accounts[0].id }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load income transactions');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void fetchIncome();
-  }, []);
+  }, [fetchIncome]);
 
   const onDateRangeChange = async (from: string, to: string) => {
     setStartDate(from);

@@ -184,7 +184,7 @@ const queryParamKeys = {
   },
 } as const;
 
-function getFirstQueryValue(searchParams: URLSearchParams, ...keys: string[]) {
+function getFirstQueryValue(searchParams: Pick<URLSearchParams, 'get'>, ...keys: string[]) {
   for (const key of keys) {
     const value = searchParams.get(key);
     if (value !== null) return value;
@@ -622,23 +622,27 @@ function parsePersistedOrders(rawValue: string | null, fallback: SalesOrder[]) {
           return null;
         }
 
-        return {
+        const contactType = item.contactType === 'mobile' || item.contactType === 'whatsapp' ? item.contactType : null;
+
+        const normalizedOrder: SalesOrder = {
           orderId,
           name,
           mobile,
           date,
           status,
-          contactType: item.contactType === 'mobile' || item.contactType === 'whatsapp' ? item.contactType : undefined,
-          villageRoad: typeof item.villageRoad === 'string' ? item.villageRoad : undefined,
-          policeStation: typeof item.policeStation === 'string' ? item.policeStation : undefined,
-          district: typeof item.district === 'string' ? item.district : undefined,
-          productsDetails: typeof item.productsDetails === 'string' ? item.productsDetails : undefined,
-          subTotal: typeof item.subTotal === 'string' ? item.subTotal : undefined,
-          discount: typeof item.discount === 'string' ? item.discount : undefined,
-          totalTaka: typeof item.totalTaka === 'string' ? item.totalTaka : undefined,
-          sampleImageName: typeof item.sampleImageName === 'string' ? item.sampleImageName : undefined,
-          sampleImageUrl: typeof item.sampleImageUrl === 'string' ? item.sampleImageUrl : undefined,
-        } satisfies SalesOrder;
+          ...(contactType ? { contactType } : {}),
+          ...(typeof item.villageRoad === 'string' ? { villageRoad: item.villageRoad } : {}),
+          ...(typeof item.policeStation === 'string' ? { policeStation: item.policeStation } : {}),
+          ...(typeof item.district === 'string' ? { district: item.district } : {}),
+          ...(typeof item.productsDetails === 'string' ? { productsDetails: item.productsDetails } : {}),
+          ...(typeof item.subTotal === 'string' ? { subTotal: item.subTotal } : {}),
+          ...(typeof item.discount === 'string' ? { discount: item.discount } : {}),
+          ...(typeof item.totalTaka === 'string' ? { totalTaka: item.totalTaka } : {}),
+          ...(typeof item.sampleImageName === 'string' ? { sampleImageName: item.sampleImageName } : {}),
+          ...(typeof item.sampleImageUrl === 'string' ? { sampleImageUrl: item.sampleImageUrl } : {}),
+        };
+
+        return normalizedOrder;
       })
       .filter((item): item is SalesOrder => item !== null);
   } catch {
@@ -716,7 +720,7 @@ export default function SellerDashboardHome() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentDate = new Date();
+  const currentDate = useMemo(() => new Date(), []);
   const [activeView, setActiveView] = useState<SellerView>(() => {
     const initialView = searchParams.get('view');
     return isSellerView(initialView) ? initialView : 'home';
@@ -894,7 +898,18 @@ export default function SellerDashboardHome() {
 
     const queryStockSearch = searchParams.get(queryParamKeys.productStock.search) || '';
     setProductStockSearchTerm((prev) => (prev === queryStockSearch ? prev : queryStockSearch));
-  }, [searchParams]);
+  }, [
+    searchParams,
+    setDashboardCustomEndDay,
+    setDashboardCustomStartDay,
+    setDashboardDateRangeOption,
+    setLedsCustomEndDay,
+    setLedsCustomStartDay,
+    setLedsDateRangeOption,
+    setSalesCustomEndDay,
+    setSalesCustomStartDay,
+    setSalesDateRangeOption,
+  ]);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -2156,6 +2171,7 @@ export default function SellerDashboardHome() {
                         <div className="flex items-center gap-2 p-2">
                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
                             {item.image ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
                               <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
                             ) : (
                               <div className="grid h-full w-full place-items-center bg-gradient-to-br from-green-500 to-green-700 text-xl font-black text-white">{item.name.charAt(0)}</div>
@@ -2508,6 +2524,7 @@ export default function SellerDashboardHome() {
                           >
                             {createSalesForm.sampleImageUrl ? (
                               <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={createSalesForm.sampleImageUrl} alt={createSalesForm.sampleImageName || 'Uploaded sample'} className="h-full w-full object-contain bg-slate-100" />
                                 <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-1 text-[11px] text-white">
                                   <p className="truncate">{createSalesForm.sampleImageName}</p>
@@ -2754,6 +2771,7 @@ export default function SellerDashboardHome() {
                           <div className="flex min-w-0 items-center gap-2 p-2">
                             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
                               {item.image ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
                               ) : (
                                 <div className="grid h-full w-full place-items-center bg-gradient-to-br from-green-500 to-green-700 text-xl font-black text-white">{item.name.charAt(0)}</div>

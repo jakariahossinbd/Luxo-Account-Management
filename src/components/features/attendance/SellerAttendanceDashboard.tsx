@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Calendar, Clock, MapPin, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Clock, MapPin, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useToast } from '@/hooks/useToast';
 import { DateRangeOption } from '@/hooks/useDatePanelSelection';
@@ -133,11 +133,11 @@ export function SellerAttendanceDashboard({ sellerId, profile }: SellerAttendanc
   const datePanelRef = useRef<HTMLDivElement>(null);
   const dateToggleRef = useRef<HTMLButtonElement>(null);
 
-  const dateOptions: DateRangeOption[] = ['Today', 'Yesterday', 'Last 7 Days', 'This Month', 'This Year', 'All Time', 'Custom'];
+  const dateOptions: DateRangeOption[] = ['Today', 'Yesterday', 'Last 7 days', 'This month', 'Maximum', 'Custom'];
 
   const calendarDays = buildCalendarDays(selectedMonth, selectedYear);
 
-  const fetchAttendanceData = async (month: number, year: number) => {
+  const fetchAttendanceData = useCallback(async (month: number, year: number) => {
     setLoading(true);
     try {
       const response = await fetch(`/api/staff/attendance?month=${month + 1}&year=${year}`, { cache: 'no-store' });
@@ -169,7 +169,7 @@ export function SellerAttendanceDashboard({ sellerId, profile }: SellerAttendanc
     } finally {
       setLoading(false);
     }
-  };
+  }, [warning]);
 
   const getDayStatus = (day: number): DayStatus => {
     if (!day) return 'empty';
@@ -342,133 +342,166 @@ export function SellerAttendanceDashboard({ sellerId, profile }: SellerAttendanc
   }, [isDatePanelOpen]);
 
   useEffect(() => {
-    fetchAttendanceData(selectedMonth, selectedYear);
-  }, [selectedMonth, selectedYear]);
+    void fetchAttendanceData(selectedMonth, selectedYear);
+  }, [fetchAttendanceData, selectedMonth, selectedYear]);
 
-  const currentMonthName = monthNames[selectedMonth];
+  const totalLateDays = attendanceRecords.filter((record) => record.status === 'ON_BREAK').length;
+  const totalHolidayDays = holidayDates.length;
+  const formattedTodaysEarning = todaysEarning.toLocaleString('en-BD', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const formattedMonthlySalary = monthlySalary.toLocaleString('en-BD', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   return (
     <div className="space-y-6">
-      {/* Header with Date Selector */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-bold uppercase tracking-tight text-orange-500 sm:text-[26px]">
-            {t('seller.attendance')}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {profile?.name || 'Seller'} • ID: {sellerId || 'SELLER'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="rounded-[8px] border border-slate-200 bg-[#ffffff] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
+        {/* Header with Date Selector */}
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-[22px] font-bold uppercase tracking-tight text-orange-500 sm:text-[26px]">
+              SELLER ATTENDANCE
+            </h1>
+          </div>
           <button
             ref={dateToggleRef}
             type="button"
-            onClick={() => setIsDatePanelOpen(!isDatePanelOpen)}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            onClick={() => setIsDatePanelOpen((prev) => !prev)}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[14px] font-semibold text-slate-700"
           >
-            <Calendar className="h-4 w-4" />
-            <span>{currentMonthName} {selectedYear}</span>
+            {dateRangeOption}
             <span className="text-xs">▼</span>
           </button>
-          <button
-            type="button"
-            onClick={handleDownloadAttendance}
-            className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download</span>
-          </button>
         </div>
-      </div>
 
-      {/* Date Panel */}
-      {isDatePanelOpen && (
-        <div
-          ref={datePanelRef}
-          className="rounded-lg border border-slate-200 bg-white p-4 shadow-lg"
-        >
-          <div className="grid grid-cols-[170px_1fr] gap-4">
-            <div className="space-y-2 border-r border-slate-100 pr-4">
-              {dateOptions.map((option) => (
-                <label key={option} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-50">
-                  <input
-                    type="radio"
-                    name="dateRange"
-                    checked={dateRangeOption === option}
-                    onChange={() => setDateRangeOption(option)}
-                    className="accent-orange-500"
-                  />
-                  <span className="text-sm text-slate-700">{option}</span>
-                </label>
-              ))}
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}
-                  className="rounded-md p-1 text-slate-600 hover:bg-slate-200"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <DatePanelPicker
-                  monthIndex={selectedMonth}
-                  year={selectedYear}
-                  onMonthChange={setSelectedMonth}
-                  onYearChange={setSelectedYear}
-                />
-                <button
-                  type="button"
-                  onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}
-                  className="rounded-md p-1 text-slate-600 hover:bg-slate-200"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-7 gap-2 text-center text-xs">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                  <div key={day} className="py-1 font-semibold text-slate-600">{day}</div>
-                ))}
-                {calendarDays.map((day, idx) => (
-                  <div
-                    key={idx}
-                    className={`rounded-md border py-1 text-xs font-medium ${
-                      day ? getDayColor(getDayStatus(day)) : ''
-                    }`}
-                  >
-                    {day || ''}
+        <div className="relative">
+          {isDatePanelOpen ? (
+            <div ref={datePanelRef} className="absolute right-0 top-0 z-20 w-full rounded-[16px] border border-slate-200 bg-white p-3 shadow-2xl sm:max-w-[820px]">
+              <div className="overflow-x-auto">
+                <div className="grid min-w-[620px] grid-cols-[170px_1fr] gap-4">
+                  <div className="space-y-1 border-r border-slate-100 pr-4 text-sm text-slate-700">
+                    {dateOptions.map((option) => (
+                      <label key={option} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1.5 hover:bg-slate-50">
+                        <input
+                          type="radio"
+                          name="attendanceDateRange"
+                          checked={dateRangeOption === option}
+                          onChange={() => setDateRangeOption(option)}
+                          className="accent-orange-500"
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
                   </div>
-                ))}
+                  <div className="rounded-[14px] border border-slate-200 bg-white p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2 px-2 pt-1 text-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMonth((m) => (m === 0 ? 11 : m - 1))}
+                        className="text-2xl leading-none"
+                      >
+                        ‹
+                      </button>
+                      <DatePanelPicker
+                        monthIndex={selectedMonth}
+                        year={selectedYear}
+                        onMonthChange={setSelectedMonth}
+                        onYearChange={setSelectedYear}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMonth((m) => (m === 11 ? 0 : m + 1))}
+                        className="text-2xl leading-none"
+                      >
+                        ›
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-2 text-center text-[15px] text-slate-700">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                        <div key={day} className="py-1 font-medium">{day}</div>
+                      ))}
+                      {calendarDays.map((day, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          disabled={!day}
+                          className={`rounded-md py-2 ${
+                            !day
+                              ? 'cursor-default text-slate-300'
+                              : 'text-slate-900 hover:bg-slate-100'
+                          }`}
+                        >
+                          {day || ''}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center justify-end gap-4 px-2 pb-1 text-sm">
+                      <button type="button" className="text-slate-700" onClick={() => setIsDatePanelOpen(false)}>
+                        Cancel
+                      </button>
+                      <button type="button" className="rounded-md bg-orange-500 px-4 py-2 text-white" onClick={() => setIsDatePanelOpen(false)}>
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Summary Cards */}
+        <div className="mt-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div className="overflow-hidden rounded-[28px] border border-slate-300 bg-gradient-to-b from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_20px_rgba(148,163,184,0.16)]">
+              <p className="border-b border-slate-300 px-2 py-2 text-center text-[18px] font-semibold text-slate-500 sm:px-4 sm:py-3 sm:text-[30px]">Today&apos;s Earnings</p>
+              <div className="px-2 pb-3 pt-3 text-center sm:px-4 sm:pb-5 sm:pt-4">
+                <p className="text-[22px] font-bold leading-none text-orange-600 sm:text-[58px]">৳{formattedTodaysEarning} Tk</p>
+                <p className="mt-2 text-[12px] font-medium text-slate-400 sm:mt-3 sm:text-[18px]">
+                  {currentDate.toLocaleDateString('en-BD', { month: 'long', day: '2-digit', year: 'numeric' })}
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-[28px] border border-slate-300 bg-gradient-to-b from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_6px_20px_rgba(148,163,184,0.16)]">
+              <p className="border-b border-slate-300 px-2 py-2 text-center text-[18px] font-semibold text-slate-500 sm:px-4 sm:py-3 sm:text-[30px]">Monthly Salary</p>
+              <div className="px-2 pb-3 pt-3 text-center sm:px-4 sm:pb-5 sm:pt-4">
+                <p className="text-[22px] font-bold leading-none text-green-600 sm:text-[58px]">৳{formattedMonthlySalary} Tk</p>
+                <p className="mt-2 text-[12px] font-medium text-slate-400 sm:mt-3 sm:text-[18px]">{monthNames[selectedMonth]} - {selectedYear}</p>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Today's Earnings</p>
-          <p className="mt-2 text-xl font-bold text-orange-600">৳{todaysEarning}</p>
-          <p className="mt-1 text-xs text-slate-400">{currentDate.toLocaleDateString('en-BD', { month: 'short', day: '2-digit', year: 'numeric' })}</p>
-        </div>
+          <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-300 bg-gradient-to-b from-white to-slate-100 shadow-[0_8px_24px_rgba(148,163,184,0.18)] sm:mt-5">
+            <div className="grid grid-cols-4">
+              <div className="border-r border-slate-300 px-2 py-3 text-center sm:px-3 sm:py-4">
+                <p className="whitespace-nowrap text-[11px] font-semibold text-slate-500 sm:text-[28px]">Total Presents</p>
+                <p className="mt-2 text-[28px] font-bold leading-none text-green-600 sm:mt-3 sm:text-[64px]">{totalPresent}</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-400 sm:mt-2 sm:text-[20px]">Days</p>
+              </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Monthly Salary</p>
-          <p className="mt-2 text-xl font-bold text-green-600">৳{monthlySalary}</p>
-          <p className="mt-1 text-xs text-slate-400">{monthNames[selectedMonth]} {selectedYear}</p>
-        </div>
+              <div className="border-r border-slate-300 px-2 py-3 text-center sm:px-3 sm:py-4">
+                <p className="whitespace-nowrap text-[11px] font-semibold text-slate-500 sm:text-[28px]">Total Absent</p>
+                <p className="mt-2 text-[28px] font-bold leading-none text-red-600 sm:mt-3 sm:text-[64px]">{totalAbsent}</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-400 sm:mt-2 sm:text-[20px]">Days</p>
+              </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Total Present</p>
-          <p className="mt-2 text-xl font-bold text-green-600">{totalPresent}</p>
-          <p className="mt-1 text-xs text-slate-400">Days</p>
-        </div>
+              <div className="border-r border-slate-300 px-2 py-3 text-center sm:px-3 sm:py-4">
+                <p className="whitespace-nowrap text-[11px] font-semibold text-slate-500 sm:text-[28px]">Total Late</p>
+                <p className="mt-2 text-[28px] font-bold leading-none text-orange-500 sm:mt-3 sm:text-[64px]">{String(totalLateDays).padStart(2, '0')}</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-400 sm:mt-2 sm:text-[20px]">Days</p>
+              </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500">Total Absent</p>
-          <p className="mt-2 text-xl font-bold text-red-600">{totalAbsent}</p>
-          <p className="mt-1 text-xs text-slate-400">Days</p>
+              <div className="px-2 py-3 text-center sm:px-3 sm:py-4">
+                <p className="whitespace-nowrap text-[11px] font-semibold text-slate-500 sm:text-[28px]">Total Holiday</p>
+                <p className="mt-2 text-[28px] font-bold leading-none text-blue-600 sm:mt-3 sm:text-[64px]">{String(totalHolidayDays).padStart(2, '0')}</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-400 sm:mt-2 sm:text-[20px]">Days</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -661,6 +694,17 @@ export function SellerAttendanceDashboard({ sellerId, profile }: SellerAttendanc
             <span className="text-xs text-slate-600">Holiday</span>
           </div>
         </div>
+      </div>
+
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={handleDownloadAttendance}
+          className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700"
+        >
+          <Download className="h-4 w-4" />
+          <span>Download</span>
+        </button>
       </div>
     </div>
   );

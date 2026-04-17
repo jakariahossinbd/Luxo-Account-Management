@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
@@ -45,7 +45,7 @@ export default function PurchasePage() {
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const fetchPurchases = async (page = 1) => {
+  const fetchPurchases = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -64,11 +64,11 @@ export default function PurchasePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchPurchases();
-  }, []);
+    void fetchPurchases();
+  }, [fetchPurchases]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.pages) {

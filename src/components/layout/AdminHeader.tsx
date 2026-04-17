@@ -62,6 +62,7 @@ export function AdminHeader({
           </button>
 
           <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/luxo-logo.svg" alt="Luxo" className="h-12 w-auto object-contain" />
           </div>
         </div>
@@ -82,6 +83,7 @@ export function AdminHeader({
                 aria-label="Open profile menu"
               >
                 {avatarImage ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={avatarImage} alt={avatarName} className="h-10 w-10 rounded-full object-cover ring-2 ring-orange-200" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="h-10 w-10 overflow-hidden rounded-full bg-gradient-to-br from-orange-400 to-orange-500 ring-2 ring-orange-200">

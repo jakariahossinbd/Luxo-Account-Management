@@ -63,8 +63,10 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-white px-4 py-4 sm:px-6 sm:py-5">
       <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-[440px] flex-col items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/luxo-logo.svg" alt="Luxo" className="h-auto w-[170px] object-contain sm:w-[220px]" />
 
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/login-img-1.png"
           alt="Team Workforce"

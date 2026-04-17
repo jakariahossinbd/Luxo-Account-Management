@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Plus, Eye, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
@@ -43,7 +43,7 @@ export default function SalesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
 
-  const fetchSales = async (page = 1) => {
+  const fetchSales = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -62,11 +62,11 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    fetchSales();
-  }, []);
+    void fetchSales();
+  }, [fetchSales]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.pages) {
