@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const secret = process.env.NEXTAUTH_SECRET;
 
+function toLoginUrl(request: NextRequest, targetPath: string, switchAccount = false) {
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('next', targetPath);
+  if (switchAccount) {
+    loginUrl.searchParams.set('switch', '1');
+  }
+  return loginUrl;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -12,13 +21,13 @@ export async function middleware(request: NextRequest) {
 
     // If no token, redirect to login
     if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(toLoginUrl(request, pathname));
     }
 
     // Check if user has admin role
     if (token.role !== 'ADMIN') {
-      // Non-admin users cannot access admin routes
-      return NextResponse.redirect(new URL('/seller', request.url));
+      // Wrong role should re-authenticate instead of falling through to another dashboard
+      return NextResponse.redirect(toLoginUrl(request, pathname, true));
     }
   }
 
@@ -28,7 +37,7 @@ export async function middleware(request: NextRequest) {
 
     // If no token, redirect to login
     if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(toLoginUrl(request, pathname));
     }
 
     // Check if user has seller or admin role
