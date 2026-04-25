@@ -3,8 +3,10 @@ import { getServerSession } from 'next-auth';
 import { OrderStage } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { dispatchDeliveryIntegrations } from '@/lib/integrations/delivery';
 
 type SalesOrderStatus = 'pending' | 'processing' | 'delivery' | 'canceled' | 'customer-leds';
+type DeliveryIndicatorState = 'pending' | 'done' | 'deny';
 
 type SalesOrderPayload = {
   orderId: string;
@@ -12,6 +14,8 @@ type SalesOrderPayload = {
   mobile: string;
   date: string;
   status: SalesOrderStatus;
+  smsState?: DeliveryIndicatorState;
+  courierState?: DeliveryIndicatorState;
   contactType?: 'mobile' | 'whatsapp';
   villageRoad?: string;
   policeStation?: string;
@@ -41,6 +45,9 @@ type PaginatedOrdersResult = {
 type OrderMeta = {
   source: 'seller-dashboard-orders';
   date?: string;
+  lastStatus?: SalesOrderStatus;
+  smsState?: DeliveryIndicatorState;
+  courierState?: DeliveryIndicatorState;
   contactType?: 'mobile' | 'whatsapp';
   villageRoad?: string;
   policeStation?: string;
@@ -51,6 +58,10 @@ type OrderMeta = {
   totalTaka?: string;
   sampleImageName?: string;
 };
+
+function normalizeIndicatorState(value: unknown): DeliveryIndicatorState {
+  return value === 'done' || value === 'deny' ? value : 'pending';
+}
 
 const sourceMarker = '"source":"seller-dashboard-orders"';
 
@@ -81,6 +92,9 @@ function parseOrderMeta(notes: string | null): OrderMeta {
     return {
       source: 'seller-dashboard-orders',
       date: typeof parsed.date === 'string' ? parsed.date : undefined,
+      lastStatus: parseStatusOrUndefined(parsed.lastStatus),
+      smsState: normalizeIndicatorState(parsed.smsState),
+      courierState: normalizeIndicatorState(parsed.courierState),
       contactType: parsed.contactType === 'mobile' || parsed.contactType === 'whatsapp' ? parsed.contactType : undefined,
       villageRoad: typeof parsed.villageRoad === 'string' ? parsed.villageRoad : undefined,
       policeStation: typeof parsed.policeStation === 'string' ? parsed.policeStation : undefined,
@@ -110,6 +124,13 @@ function normalizeStatus(value: unknown): SalesOrderStatus {
   return 'customer-leds';
 }
 
+function parseStatusOrUndefined(value: unknown): SalesOrderStatus | undefined {
+  if (value === 'pending' || value === 'processing' || value === 'delivery' || value === 'canceled' || value === 'customer-leds') {
+    return value;
+  }
+  return undefined;
+}
+
 function normalizeOrderPayload(item: unknown): SalesOrderPayload | null {
   if (!item || typeof item !== 'object') return null;
   const row = item as Record<string, unknown>;
@@ -124,6 +145,8 @@ function normalizeOrderPayload(item: unknown): SalesOrderPayload | null {
     mobile: row.mobile.trim(),
     date: typeof row.date === 'string' ? row.date : '',
     status: normalizeStatus(row.status),
+    smsState: normalizeIndicatorState(row.smsState),
+    courierState: normalizeIndicatorState(row.courierState),
     contactType: row.contactType === 'mobile' || row.contactType === 'whatsapp' ? row.contactType : undefined,
     villageRoad: typeof row.villageRoad === 'string' ? row.villageRoad : undefined,
     policeStation: typeof row.policeStation === 'string' ? row.policeStation : undefined,
@@ -154,6 +177,8 @@ function mapLeadToOrder(lead: {
     mobile: lead.phone,
     date: meta.date || toDisplayDate(lead.createdAt),
     status,
+    smsState: meta.smsState || 'pending',
+    courierState: meta.courierState || 'pending',
     contactType: meta.contactType,
     villageRoad: meta.villageRoad,
     policeStation: meta.policeStation,
@@ -271,17 +296,47 @@ export async function PUT(request: Request) {
       select: {
         id: true,
         leadId: true,
+        customerName: true,
+        phone: true,
+        stage: true,
         notes: true,
       },
     });
 
     const existingByOrderId = new Map(existingRows.map((item) => [item.leadId, item]));
 
+    const integrationJobs: Array<{
+      orderId: string;
+      status: SalesOrderStatus;
+      customerName: string;
+      phone: string;
+      orderDate: string;
+    }> = [];
+
     await prisma.$transaction(async (tx) => {
       for (const item of dedupedByOrderId) {
+        const existingRow = existingByOrderId.get(item.orderId);
+        const existingMeta = existingRow ? parseOrderMeta(existingRow.notes) : null;
+        const previousStatus = existingMeta?.lastStatus || (existingRow ? statusByStage[existingRow.stage] : undefined);
+        const isStatusTransition = !existingRow || previousStatus !== item.status;
+        const isProcessingTransition = isStatusTransition && item.status === 'processing';
+
         const meta: OrderMeta = {
           source: 'seller-dashboard-orders',
           date: item.date,
+          lastStatus: item.status,
+          smsState:
+            isStatusTransition
+              ? 'pending'
+              : typeof item.smsState === 'string'
+              ? normalizeIndicatorState(item.smsState)
+              : existingMeta?.smsState || 'pending',
+          courierState:
+            isProcessingTransition
+              ? 'pending'
+              : typeof item.courierState === 'string'
+              ? normalizeIndicatorState(item.courierState)
+              : existingMeta?.courierState || 'pending',
           contactType: item.contactType,
           villageRoad: item.villageRoad,
           policeStation: item.policeStation,
@@ -293,7 +348,7 @@ export async function PUT(request: Request) {
           sampleImageName: item.sampleImageName,
         };
 
-        if (existingByOrderId.has(item.orderId)) {
+        if (existingRow) {
           await tx.lead.update({
             where: { leadId: item.orderId },
             data: {
@@ -319,6 +374,16 @@ export async function PUT(request: Request) {
             },
           });
         }
+
+        if (isStatusTransition) {
+          integrationJobs.push({
+            orderId: item.orderId,
+            status: item.status,
+            customerName: item.name,
+            phone: item.mobile,
+            orderDate: item.date,
+          });
+        }
       }
 
       const staleOrderIds = existingRows.filter((row) => !incomingOrderIds.has(row.leadId)).map((row) => row.leadId);
@@ -331,6 +396,41 @@ export async function PUT(request: Request) {
         });
       }
     });
+
+    for (const job of integrationJobs) {
+      try {
+        const result = await dispatchDeliveryIntegrations({
+          orderId: job.orderId,
+          customerName: job.customerName,
+          phone: job.phone,
+          orderDate: job.orderDate,
+          status: job.status,
+        });
+
+        const row = await prisma.lead.findUnique({
+          where: { leadId: job.orderId },
+          select: { notes: true },
+        });
+
+        const currentMeta = parseOrderMeta(row?.notes || null);
+
+        const nextMeta: OrderMeta = {
+          ...currentMeta,
+          lastStatus: job.status,
+          smsState: result.smsState,
+          courierState: job.status === 'processing' ? result.courierState : currentMeta.courierState || 'pending',
+        };
+
+        await prisma.lead.update({
+          where: { leadId: job.orderId },
+          data: {
+            notes: JSON.stringify(nextMeta),
+          },
+        });
+      } catch (error) {
+        console.error(`Delivery integration dispatch failed for ${job.orderId}:`, error);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

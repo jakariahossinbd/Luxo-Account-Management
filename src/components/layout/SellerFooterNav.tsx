@@ -34,7 +34,7 @@ export function SellerFooterNav({ activeView, onNavigate }: SellerFooterNavProps
                 <button
                   type="button"
                   onClick={() => onNavigate(item.key)}
-                  className="relative flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-[0_8px_18px_rgba(249,115,22,0.42),inset_0_2px_0_rgba(255,255,255,0.28)] transition hover:shadow-[0_10px_20px_rgba(249,115,22,0.5),inset_0_2px_0_rgba(255,255,255,0.3)] active:scale-95"
+                  className="seller-menu-hover relative flex h-16 w-16 flex-col items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-[0_8px_18px_rgba(249,115,22,0.42),inset_0_2px_0_rgba(255,255,255,0.28)] transition hover:shadow-[0_10px_20px_rgba(249,115,22,0.5),inset_0_2px_0_rgba(255,255,255,0.3)] active:scale-95"
                 >
                   <Icon className="h-5 w-5 scale-110" />
                   <span className="mt-1 text-[9px] font-bold whitespace-nowrap text-white">{item.label}</span>
@@ -48,7 +48,7 @@ export function SellerFooterNav({ activeView, onNavigate }: SellerFooterNavProps
               <button
                 type="button"
                 onClick={() => onNavigate(item.key)}
-                className={`relative flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 py-0 transition ${
+                className={`seller-menu-hover relative flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 py-0 transition ${
                   isActive ? 'text-orange-500' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >

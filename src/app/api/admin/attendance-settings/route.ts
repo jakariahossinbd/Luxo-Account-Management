@@ -22,16 +22,16 @@ type LocationPolicy = {
 const CLOCK_WINDOW_KEY = 'attendance.clock_window';
 const LOCATION_POLICY_KEY = 'attendance.location_policy';
 const DEFAULT_CLOCK_WINDOW: ClockWindow = {
-  clockInStart: '08:00',
-  clockInEnd: '11:00',
-  clockOutStart: '16:00',
-  clockOutEnd: '23:00',
+  clockInStart: '00:00',
+  clockInEnd: '23:59',
+  clockOutStart: '00:00',
+  clockOutEnd: '23:59',
 };
 
 const DEFAULT_LOCATION_POLICY: LocationPolicy = {
-  officeLatitude: 23.8103,
-  officeLongitude: 90.4125,
-  allowedRadiusMeters: 250,
+  officeLatitude: 23.9287696,
+  officeLongitude: 90.3778525,
+  allowedRadiusMeters: 100,
   requireLocation: true,
   requireSelfie: true,
 };

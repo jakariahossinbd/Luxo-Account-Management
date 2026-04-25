@@ -17,7 +17,7 @@ export default function ProductsPage() {
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ padding: '20px' }}>
       <h1>Products</h1>
       <p>Products page - Coming soon</p>
       <button onClick={() => router.push('/login')} style={{ padding: '10px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '4px' }}>Logout</button>

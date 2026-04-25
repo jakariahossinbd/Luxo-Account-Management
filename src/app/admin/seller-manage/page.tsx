@@ -12,6 +12,7 @@ interface Seller {
   employeeCode?: string;
   salesTargetAmount?: number;
   monthlyExpensesAmount?: number;
+  salary?: number;
   user?: {
     name: string;
     email: string;
@@ -51,10 +52,12 @@ export default function SellerManagePage() {
     designation: 'Seller',
     salesTargetAmount: '1',
     monthlyExpensesAmount: '0',
+    salary: '0',
   });
   const [editForm, setEditForm] = useState({
     salesTargetAmount: '1',
     monthlyExpensesAmount: '0',
+    salary: '0',
   });
 
   const normalizeSalesTargetCount = (value: string) => {
@@ -160,6 +163,7 @@ export default function SellerManagePage() {
         designation: 'Seller',
         salesTargetAmount: '1',
         monthlyExpensesAmount: '0',
+        salary: '0',
       });
       fetchSellers(pagination.page);
     } catch (err) {
@@ -174,6 +178,7 @@ export default function SellerManagePage() {
     setEditForm({
       salesTargetAmount: String(seller.salesTargetAmount ?? 1),
       monthlyExpensesAmount: String(seller.monthlyExpensesAmount ?? 0),
+      salary: String(seller.salary ?? 0),
     });
   };
 
@@ -191,6 +196,7 @@ export default function SellerManagePage() {
           id: editingSeller.id,
           salesTargetAmount: normalizeSalesTargetCount(editForm.salesTargetAmount),
           monthlyExpensesAmount: Number(editForm.monthlyExpensesAmount) || 0,
+          salary: Number(editForm.salary) || 0,
         }),
       });
 
@@ -286,6 +292,13 @@ export default function SellerManagePage() {
               inputMode="numeric"
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
             />
+            <input
+              value={createForm.salary}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, salary: event.target.value }))}
+              placeholder="Monthly Fixed Salary"
+              inputMode="numeric"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+            />
           </div>
 
           <div className="mt-4 flex justify-end">
@@ -341,6 +354,13 @@ export default function SellerManagePage() {
                   value={editForm.monthlyExpensesAmount}
                   onChange={(event) => setEditForm((prev) => ({ ...prev, monthlyExpensesAmount: event.target.value }))}
                   placeholder="Monthly Expenses Amount"
+                  inputMode="numeric"
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                />
+                <input
+                  value={editForm.salary}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, salary: event.target.value }))}
+                  placeholder="Monthly Fixed Salary"
                   inputMode="numeric"
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-orange-400"
                 />

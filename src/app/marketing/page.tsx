@@ -27,7 +27,7 @@ export default function MarketingPage() {
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial' }}>
+    <div style={{ padding: '20px' }}>
       <h1>Marketing Dashboard</h1>
       <p>Welcome, {(session.user as any)?.name || 'Marketing'}</p>
       <button onClick={() => router.push('/staff')}>Staff</button>

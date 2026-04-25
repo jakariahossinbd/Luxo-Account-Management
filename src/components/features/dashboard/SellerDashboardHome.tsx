@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -42,7 +42,18 @@ type StockNoteCategoryContext = {
 
 type ProductStockStage = 'categories' | 'products';
 
+type GlobalSellerSearchResult = {
+  id: string;
+  type: 'view' | 'sales' | 'leds' | 'product' | 'category';
+  label: string;
+  description: string;
+  view?: SellerView;
+  queryValue?: string;
+  categoryId?: string;
+};
+
 type SalesOrderStatus = 'pending' | 'processing' | 'delivery' | 'canceled' | 'customer-leds';
+type DeliveryIndicatorState = 'pending' | 'done' | 'deny';
 type SalesBoardStatus = Exclude<SalesOrderStatus, 'customer-leds'>;
 type SalesFilterStatus = 'all' | SalesBoardStatus;
 type LedsFilterStatus = 'all' | SalesOrderStatus;
@@ -54,6 +65,8 @@ type SalesOrder = {
   mobile: string;
   date: string;
   status: SalesOrderStatus;
+  smsState?: DeliveryIndicatorState;
+  courierState?: DeliveryIndicatorState;
   contactType?: SalesContactType;
   villageRoad?: string;
   policeStation?: string;
@@ -337,7 +350,7 @@ function selectRandomInventoryByCategory(items: InventoryItem[], seed: string, l
 const salesStatusLabel: Record<SalesOrderStatus, string> = {
   pending: 'PENDING ORDER',
   processing: 'PROCESSING ORDER',
-  delivery: 'DELIVERY ORDER',
+  delivery: 'COMPLETE DELIVERY',
   canceled: 'CANCELED ORDER',
   'customer-leds': 'CUSTOMER LEDS',
 };
@@ -361,7 +374,7 @@ const salesStatusHoverClass: Record<SalesOrderStatus, string> = {
 const salesOrderSections: Array<{ key: SalesBoardStatus; label: string; titleClass: string }> = [
   { key: 'pending', label: 'PENDING ORDER', titleClass: 'text-amber-500' },
   { key: 'processing', label: 'PROCESSING ORDER', titleClass: 'text-blue-700' },
-  { key: 'delivery', label: 'DELIVERY ORDER', titleClass: 'text-green-600' },
+  { key: 'delivery', label: 'COMPLETE DELIVERY', titleClass: 'text-green-600' },
   { key: 'canceled', label: 'CANCELED ORDER', titleClass: 'text-red-600' },
 ];
 
@@ -594,6 +607,23 @@ function normalizePersistedStatus(value: unknown): SalesOrderStatus | null {
   return null;
 }
 
+function normalizeDeliveryIndicatorState(value: unknown): DeliveryIndicatorState {
+  if (value === 'done' || value === 'deny') {
+    return value;
+  }
+  return 'pending';
+}
+
+function getIndicatorDotClass(channel: 'sms' | 'courier', state: DeliveryIndicatorState) {
+  if (state === 'deny') {
+    return 'bg-red-200 border-red-300';
+  }
+  if (state === 'done') {
+    return channel === 'sms' ? 'bg-green-200 border-green-300' : 'bg-sky-200 border-sky-300';
+  }
+  return 'bg-slate-200 border-slate-300';
+}
+
 function parsePersistedOrders(rawValue: string | null, fallback: SalesOrder[]) {
   if (rawValue === null) return fallback;
 
@@ -630,6 +660,8 @@ function parsePersistedOrders(rawValue: string | null, fallback: SalesOrder[]) {
           mobile,
           date,
           status,
+          smsState: normalizeDeliveryIndicatorState(item.smsState),
+          courierState: normalizeDeliveryIndicatorState(item.courierState),
           ...(contactType ? { contactType } : {}),
           ...(typeof item.villageRoad === 'string' ? { villageRoad: item.villageRoad } : {}),
           ...(typeof item.policeStation === 'string' ? { policeStation: item.policeStation } : {}),
@@ -696,7 +728,7 @@ function iconForAction(key: string) {
 function getPlaceholderTitle(view: SellerView) {
   switch (view) {
     case 'create-sales':
-      return 'Create Sales';
+      return 'Create Sale';
     case 'customer-leds':
       return 'Customer Leds';
     case 'product-stock':
@@ -714,6 +746,29 @@ function getPlaceholderTitle(view: SellerView) {
   }
 }
 
+function mergeIndicatorStates(previousRows: SalesOrder[], incomingRows: SalesOrder[]) {
+  const incomingMap = new Map(
+    incomingRows.map((row) => [
+      row.orderId,
+      {
+        smsState: normalizeDeliveryIndicatorState(row.smsState),
+        courierState: normalizeDeliveryIndicatorState(row.courierState),
+      },
+    ])
+  );
+
+  return previousRows.map((row) => {
+    const incoming = incomingMap.get(row.orderId);
+    if (!incoming) return row;
+
+    return {
+      ...row,
+      smsState: incoming.smsState,
+      courierState: incoming.courierState,
+    };
+  });
+}
+
 export default function SellerDashboardHome() {
   const { t } = useTranslation();
   const { success, warning } = useToast();
@@ -727,6 +782,8 @@ export default function SellerDashboardHome() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [productStockSearchTerm, setProductStockSearchTerm] = useState('');
   const [profile, setProfile] = useState({ name: '', image: '', sellerId: '' });
   const [sellerDefaults, setSellerDefaults] = useState({ salesTargetAmount: 0, monthlyExpensesAmount: 0 });
@@ -763,7 +820,8 @@ export default function SellerDashboardHome() {
   const [orderFlowType, setOrderFlowType] = useState<OrderFlowType>('sales');
   const [hasHydratedOrders, setHasHydratedOrders] = useState(false);
   const [ordersSyncState, setOrdersSyncState] = useState<OrdersSyncState>('loading');
-  const [ordersSyncRetryKey, setOrdersSyncRetryKey] = useState(0);
+  const [indicatorRefreshLoading, setIndicatorRefreshLoading] = useState(false);
+  const [lastIndicatorRefreshAt, setLastIndicatorRefreshAt] = useState<number | null>(null);
   const stockNotes = useCommunicationStore((state) => state.stockNotes);
   const upsertStockNote = useCommunicationStore((state) => state.upsertStockNote);
   const clearStockNote = useCommunicationStore((state) => state.clearStockNote);
@@ -793,12 +851,15 @@ export default function SellerDashboardHome() {
   const salesStatusDropdownRef = useRef<HTMLDivElement>(null);
   const dashboardDateToggleRef = useRef<HTMLButtonElement>(null);
   const dashboardDatePanelRef = useRef<HTMLDivElement>(null);
+  const globalSearchContainerRef = useRef<HTMLDivElement>(null);
   const orderListDateToggleRef = useRef<HTMLButtonElement>(null);
   const orderListDatePanelRef = useRef<HTMLDivElement>(null);
   const salesLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSyncedOrdersSnapshotRef = useRef('');
+  const createSalesScrollPositionRef = useRef(0);
+  const lastSyncedOrdersSnapshotRef = useRef<string | null>(null);
   const syncIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ordersSyncRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     dateRangeOption: dashboardDateRangeOption,
@@ -1046,6 +1107,38 @@ export default function SellerDashboardHome() {
     }
   };
 
+  const refreshDeliveryIndicators = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIndicatorRefreshLoading(true);
+    }
+
+    try {
+      const response = await fetch('/api/seller/orders', { cache: 'no-store' });
+      const payload = (await response.json()) as SellerOrdersResponse;
+
+      if (!response.ok || !payload?.success) {
+        return;
+      }
+
+      const incomingSales = Array.isArray(payload.data?.salesOrders)
+        ? (payload.data?.salesOrders as SalesOrder[])
+        : [];
+      const incomingLeds = Array.isArray(payload.data?.ledsOrders)
+        ? (payload.data?.ledsOrders as SalesOrder[])
+        : [];
+
+      setSalesOrders((prev) => mergeIndicatorStates(prev, incomingSales));
+      setLedsOrders((prev) => mergeIndicatorStates(prev, incomingLeds));
+      setLastIndicatorRefreshAt(Date.now());
+    } catch {
+      // Keep UI state untouched for transient refresh failures.
+    } finally {
+      if (!silent) {
+        setIndicatorRefreshLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const persistedSalesOrders = parsePersistedOrders(window.localStorage.getItem(SALES_ORDERS_STORAGE_KEY), fallbackSalesOrders);
     const persistedLedsOrders = parsePersistedOrders(window.localStorage.getItem(LEDS_ORDERS_STORAGE_KEY), fallbackLedsOrders);
@@ -1128,12 +1221,33 @@ export default function SellerDashboardHome() {
   useEffect(() => {
     if (!hasHydratedOrders) return;
 
+    const intervalId = setInterval(() => {
+      void refreshDeliveryIndicators(true);
+    }, 45_000);
+
+    return () => clearInterval(intervalId);
+  }, [hasHydratedOrders, refreshDeliveryIndicators]);
+
+  useEffect(() => {
+    if (!hasHydratedOrders) return;
+
     const snapshot = JSON.stringify({ salesOrders, ledsOrders });
     if (snapshot === lastSyncedOrdersSnapshotRef.current) {
       return;
     }
 
-    const syncTimer = setTimeout(async () => {
+    let cancelled = false;
+
+    const clearRetryTimer = () => {
+      if (ordersSyncRetryTimerRef.current) {
+        clearTimeout(ordersSyncRetryTimerRef.current);
+        ordersSyncRetryTimerRef.current = null;
+      }
+    };
+
+    const syncOrders = async (attempt: number) => {
+      if (cancelled) return;
+
       try {
         updateOrdersSyncState('syncing');
         const response = await fetch('/api/seller/orders', {
@@ -1144,24 +1258,58 @@ export default function SellerDashboardHome() {
 
         if (!response.ok) {
           updateOrdersSyncState('idle');
-          setTimeout(() => {
-            setOrdersSyncRetryKey((prev) => prev + 1);
-          }, 2000);
+
+          const cappedAttempt = Math.min(attempt, 4);
+          const baseDelay = Math.min(8000, 1200 * 2 ** cappedAttempt);
+          const jitter = Math.floor(Math.random() * 300);
+
+          clearRetryTimer();
+          ordersSyncRetryTimerRef.current = setTimeout(() => {
+            void syncOrders(cappedAttempt + 1);
+          }, baseDelay + jitter);
           return;
         }
 
+        clearRetryTimer();
         lastSyncedOrdersSnapshotRef.current = snapshot;
         updateOrdersSyncState('saved');
       } catch {
+        if (cancelled) return;
+
         updateOrdersSyncState('idle');
-        setTimeout(() => {
-          setOrdersSyncRetryKey((prev) => prev + 1);
-        }, 2000);
+
+        const cappedAttempt = Math.min(attempt, 4);
+        const baseDelay = Math.min(8000, 1200 * 2 ** cappedAttempt);
+        const jitter = Math.floor(Math.random() * 300);
+
+        clearRetryTimer();
+        ordersSyncRetryTimerRef.current = setTimeout(() => {
+          void syncOrders(cappedAttempt + 1);
+        }, baseDelay + jitter);
       }
+    };
+
+    const syncTimer = setTimeout(() => {
+      void syncOrders(0);
     }, 350);
 
-    return () => clearTimeout(syncTimer);
-  }, [hasHydratedOrders, ledsOrders, ordersSyncRetryKey, salesOrders]);
+    return () => {
+      cancelled = true;
+      clearTimeout(syncTimer);
+      clearRetryTimer();
+    };
+  }, [hasHydratedOrders, ledsOrders, salesOrders]);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!isGlobalSearchOpen) return;
+      if (globalSearchContainerRef.current?.contains(event.target as Node)) return;
+      setIsGlobalSearchOpen(false);
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [isGlobalSearchOpen]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -1238,6 +1386,12 @@ export default function SellerDashboardHome() {
       }
       if (productLongPressTimerRef.current) {
         clearTimeout(productLongPressTimerRef.current);
+      }
+      if (syncIndicatorTimerRef.current) {
+        clearTimeout(syncIndicatorTimerRef.current);
+      }
+      if (ordersSyncRetryTimerRef.current) {
+        clearTimeout(ordersSyncRetryTimerRef.current);
       }
     };
   }, []);
@@ -1498,6 +1652,138 @@ export default function SellerDashboardHome() {
     setActiveView(view);
   };
 
+  const globalSellerSearchResults = useMemo(() => {
+    const query = globalSearchTerm.trim().toLowerCase();
+    if (!query) return [] as GlobalSellerSearchResult[];
+
+    const results: GlobalSellerSearchResult[] = [];
+    const seen = new Set<string>();
+    const maxResults = 14;
+    const maxPerGroup = 5;
+
+    const addResult = (item: GlobalSellerSearchResult) => {
+      if (results.length >= maxResults || seen.has(item.id)) return;
+      seen.add(item.id);
+      results.push(item);
+    };
+
+    const matches = (...values: Array<string | undefined>) =>
+      values.some((value) => (value || '').toLowerCase().includes(query));
+
+    const viewItems: Array<{ view: SellerView; label: string; keywords: string }> = [
+      { view: 'home', label: getPlaceholderTitle('home'), keywords: 'dashboard home' },
+      { view: 'create-sales', label: t('seller.createSales'), keywords: 'create sale orders' },
+      { view: 'customer-leds', label: t('seller.customerLeds'), keywords: 'customer leads leds' },
+      { view: 'product-stock', label: t('seller.productStock'), keywords: 'inventory product stock category' },
+      { view: 'attendance', label: t('seller.attendance'), keywords: 'attendance' },
+      { view: 'monthly-report', label: t('seller.monthlyReport'), keywords: 'monthly report' },
+      { view: 'personal-note', label: t('seller.personalNote'), keywords: 'personal note memo' },
+      { view: 'profile', label: getPlaceholderTitle('profile'), keywords: 'profile account seller' },
+    ];
+
+    viewItems.forEach((item) => {
+      if (!matches(item.label, item.keywords, item.view)) return;
+      addResult({
+        id: `view-${item.view}`,
+        type: 'view',
+        label: item.label,
+        description: 'Section',
+        view: item.view,
+      });
+    });
+
+    salesOrders
+      .filter((item) => matches(item.orderId, item.name, item.mobile, item.productsDetails))
+      .slice(0, maxPerGroup)
+      .forEach((item) => {
+        addResult({
+          id: `sales-${item.orderId}`,
+          type: 'sales',
+          label: `${item.name} (${item.orderId})`,
+          description: `Sales | ${item.mobile}`,
+          queryValue: item.orderId,
+        });
+      });
+
+    ledsOrders
+      .filter((item) => matches(item.orderId, item.name, item.mobile, item.productsDetails))
+      .slice(0, maxPerGroup)
+      .forEach((item) => {
+        addResult({
+          id: `leds-${item.orderId}`,
+          type: 'leds',
+          label: `${item.name} (${item.orderId})`,
+          description: `Leds | ${item.mobile}`,
+          queryValue: item.orderId,
+        });
+      });
+
+    sellerCategories
+      .filter((item) => matches(item.name, item.id))
+      .slice(0, maxPerGroup)
+      .forEach((item) => {
+        addResult({
+          id: `category-${item.id}`,
+          type: 'category',
+          label: item.name,
+          description: 'Category | Product Stock',
+          categoryId: item.id,
+          queryValue: item.name,
+        });
+      });
+
+    allInventoryProducts
+      .filter((item) => matches(item.name, item.code, item.category))
+      .slice(0, maxPerGroup)
+      .forEach((item) => {
+        const categoryId = sellerCategories.find(
+          (category) => category.name.trim().toLowerCase() === (item.category || '').trim().toLowerCase()
+        )?.id;
+        addResult({
+          id: `product-${item.code}`,
+          type: 'product',
+          label: `${item.name} (${item.code})`,
+          description: `Product${item.category ? ` | ${item.category}` : ''}`,
+          categoryId,
+          queryValue: item.code,
+        });
+      });
+
+    return results;
+  }, [allInventoryProducts, globalSearchTerm, ledsOrders, salesOrders, sellerCategories, t]);
+
+  const handleSelectGlobalSearchResult = useCallback((result: GlobalSellerSearchResult) => {
+    if (result.type === 'view' && result.view) {
+      handleNavigateSellerView(result.view);
+    } else if (result.type === 'sales') {
+      setActiveView('create-sales');
+      setSalesStatusFilter('all');
+      setSalesSearchTerm(result.queryValue || '');
+    } else if (result.type === 'leds') {
+      setActiveView('customer-leds');
+      setLedsStatusFilter('all');
+      setLedsSearchTerm(result.queryValue || '');
+    } else if (result.type === 'category') {
+      setActiveView('product-stock');
+      setProductStockStage('products');
+      if (result.categoryId) {
+        setSelectedSellerCategoryId(result.categoryId);
+      }
+      setProductStockSearchTerm('');
+    } else if (result.type === 'product') {
+      setActiveView('product-stock');
+      setProductStockStage('products');
+      if (result.categoryId) {
+        setSelectedSellerCategoryId(result.categoryId);
+      }
+      setProductStockSearchTerm(result.queryValue || result.label);
+    }
+
+    setIsGlobalSearchOpen(false);
+  }, []);
+
+  const showGlobalSearchResults = isGlobalSearchOpen && globalSearchTerm.trim().length > 0;
+
   const visibleInventory = useMemo(() => filteredInventory.slice(0, 10), [filteredInventory]);
 
   const calendarDays = useMemo(() => buildCalendarDays(selectedMonth, selectedYear), [selectedMonth, selectedYear]);
@@ -1684,6 +1970,10 @@ export default function SellerDashboardHome() {
   const headerAvatar = profile.image || '';
 
   const handleCreateSalesOrder = (source: OrderFlowType = 'sales') => {
+    if (typeof window !== 'undefined') {
+      createSalesScrollPositionRef.current = window.scrollY;
+    }
+
     setCreateSalesForm({
       status: source === 'leds' ? 'customer-leds' : 'pending',
       orderDate: toInputDateValue(new Date()),
@@ -1711,6 +2001,14 @@ export default function SellerDashboardHome() {
     setEditingSalesOrder(null);
     setIsStatusDropdownOpen(false);
     setIsCreateSalesModalOpen(false);
+
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: createSalesScrollPositionRef.current, behavior: 'auto' });
+        });
+      });
+    }
   };
 
   const handleSalesRowPressStart = (rowKey: string) => {
@@ -1788,7 +2086,6 @@ export default function SellerDashboardHome() {
     captureRoot.style.padding = '24px';
     captureRoot.style.border = '1px solid #e2e8f0';
     captureRoot.style.borderRadius = '16px';
-    captureRoot.style.fontFamily = 'Arial, sans-serif';
 
     const sampleImageBlock = order.sampleImageUrl
       ? `<img src="${escapeHtml(order.sampleImageUrl)}" alt="Sample" style="width:100%;height:100%;object-fit:contain;border-radius:10px;background:#f8fafc;" />`
@@ -1873,6 +2170,8 @@ export default function SellerDashboardHome() {
   const handleSubmitCreateSales = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    const scrollTopBeforeSubmit = typeof window !== 'undefined' ? window.scrollY : 0;
+
     const customerName = createSalesForm.customerName.trim();
     const contactValue = createSalesForm.contactValue.trim();
 
@@ -1890,6 +2189,8 @@ export default function SellerDashboardHome() {
       mobile: contactValue,
       date: toDisplayDateValue(createSalesForm.orderDate) || '01/02/2026',
       status: selectedStatus,
+      smsState: editingSalesOrder?.smsState || 'pending',
+      courierState: editingSalesOrder?.courierState || 'pending',
       contactType: createSalesForm.contactType,
       villageRoad: createSalesForm.villageRoad,
       policeStation: createSalesForm.policeStation,
@@ -1950,6 +2251,14 @@ export default function SellerDashboardHome() {
       success(`Moved to ${salesStatusLabel[selectedStatus]}.`, 'Status updated');
     }
     handleCloseCreateSalesModal();
+
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollTopBeforeSubmit, behavior: 'auto' });
+        });
+      });
+    }
   };
 
   return (
@@ -1975,33 +2284,66 @@ export default function SellerDashboardHome() {
       <main className="desktop-content-shell mx-auto w-full max-w-[1400px] px-3 pb-28 pt-[88px] transition-colors duration-300 lg:mx-0 lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-none lg:px-5 lg:pt-[104px]">
         {dashboardView ? (
           <>
-            <div className="mb-2 rounded-full border border-orange-300 bg-white px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-3 text-slate-400">
-                <Search className="h-5 w-5 shrink-0" />
+            <div ref={globalSearchContainerRef} className="relative mt-0 mb-2 rounded-full border border-orange-300 bg-white px-4 py-2 shadow-sm">
+              <div className="flex items-center gap-2.5 text-slate-400">
+                <Search className="h-4 w-4 shrink-0" />
                 <input
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onFocus={() => setIsGlobalSearchOpen(true)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSearchTerm(value);
+                    setGlobalSearchTerm(value);
+                    setIsGlobalSearchOpen(true);
+                  }}
                   placeholder={t('seller.searchPlaceholder')}
-                  className="w-full bg-transparent text-[15px] outline-none placeholder:text-slate-400 bangla-font"
+                  className="w-full bg-transparent text-[13px] font-light outline-none placeholder:font-light placeholder:text-slate-400 bangla-font"
                 />
               </div>
+
+              {showGlobalSearchResults ? (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                  {globalSellerSearchResults.length > 0 ? (
+                    globalSellerSearchResults.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectGlobalSearchResult(item)}
+                        className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-800">{item.label}</span>
+                          <span className="block truncate text-xs text-slate-500">{item.description}</span>
+                        </span>
+                        <span className="ml-3 shrink-0 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
+                          {item.type}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs font-medium text-slate-500">
+                      No matching data in seller panel.
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
-            <section className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
+            <section className="rounded-[18px] border border-slate-200 bg-white px-4 pb-4 pt-2.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
-                <h1 className="text-[22px] font-bold uppercase tracking-tight text-orange-500 sm:text-[26px]">{t('seller.dashboard')}</h1>
+                <h1 className="text-[19px] font-semibold uppercase tracking-tight text-orange-500 sm:text-[22px]">{t('seller.dashboard')}</h1>
                 <button
                   ref={dashboardDateToggleRef}
                   type="button"
                   onClick={() => setIsDatePanelOpen((prev) => !prev)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[15px] font-semibold text-slate-700"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[15px] font-normal text-slate-700"
                 >
                   {dashboardRangeButtonLabel}
                   <span className="text-xs">▼</span>
                 </button>
               </div>
 
-              <div className="relative mt-2">
+              <div className="relative mt-3">
                 {isDatePanelOpen && (
                   <div ref={dashboardDatePanelRef} className="absolute left-0 top-0 z-20 w-full rounded-[16px] border border-slate-200 bg-white p-3 shadow-2xl">
                     <div className="overflow-x-auto">
@@ -2068,39 +2410,44 @@ export default function SellerDashboardHome() {
                   </div>
                 )}
 
-                <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="grid gap-3 rounded-[16px] border border-slate-300 bg-white p-0.5 shadow-sm">
-                    <div className="grid grid-cols-2 overflow-hidden rounded-[14px] border border-slate-200 text-center text-[16px] font-semibold text-slate-500 sm:grid-cols-3">
-                      <div className="border-b border-r border-slate-200 bg-slate-50 px-3 py-2 sm:border-b-0">
-                        Total Delivery: <span className="font-bold text-blue-600">৳{formatTakaAmount(currentMonthDeliverySummary)}</span>
-                      </div>
-                      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 sm:border-b-0">
-                        Total Canceled: <span className="font-bold text-red-500">৳{formatTakaAmount(currentMonthCanceledSummary)}</span>
-                      </div>
-                      <div className="col-span-2 bg-white px-3 py-1 text-center sm:col-span-1">
-                        <h2 className="whitespace-nowrap text-[22px] font-bold sm:text-[28px]">
-                          <span className="text-slate-800">Total Sale: </span>
-                          <span className="font-bold text-emerald-600">৳{formatTakaAmount(selectedTotalSaleSummary)}</span>
-                        </h2>
-                      </div>
+                <div className="w-full bg-white px-0 py-0">
+                  <div className="grid grid-cols-2 overflow-hidden rounded-[10px] border border-slate-200 text-center text-[14px] font-semibold text-slate-500 sm:grid-cols-3">
+                    <div className="border-b border-r border-slate-200 bg-slate-50 px-3 py-1 sm:border-b-0">
+                      <span className="whitespace-nowrap">
+                        Total Delivery: <span className="text-[14px] font-semibold text-blue-600">৳{formatTakaAmount(currentMonthDeliverySummary)}</span>
+                      </span>
+                    </div>
+                    <div className="border-b border-slate-200 bg-slate-50 px-3 py-1 sm:border-b-0">
+                      <span className="whitespace-nowrap">
+                        Total Canceled: <span className="text-[14px] font-semibold text-red-500">৳{formatTakaAmount(currentMonthCanceledSummary)}</span>
+                      </span>
+                    </div>
+                    <div className="col-span-2 bg-white px-3 py-0.5 text-center sm:col-span-1">
+                      <h2 className="whitespace-nowrap text-[19px] font-semibold sm:text-[24px]">
+                        <span className="text-slate-800">Total Sale: </span>
+                        <span className="text-[20px] font-semibold text-emerald-600 sm:text-[26px]">৳{formatTakaAmount(selectedTotalSaleSummary)}</span>
+                      </h2>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    {dashboardSummaryCards.map((card) => {
+                  <div className="mt-3 grid grid-cols-2 gap-2.5">
+                    {dashboardSummaryCards.map((card, index) => {
                       const Icon = card.icon;
                       const isAmountCard = card.key === 'monthlySales' || card.key === 'monthlyExpenses';
                       return (
-                        <article key={card.key} className={`relative h-[114px] overflow-hidden rounded-[16px] px-3 py-1.5 text-white shadow-lg ${card.color}`}>
-                          <div className="flex h-[58px] items-center justify-between">
-                            <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/20">
+                        <article key={card.key} className={`relative flex h-[88px] flex-col overflow-hidden rounded-[10px] px-3 py-1 text-white shadow-lg ${card.color}`}>
+                          <div className="flex flex-1 items-center justify-between">
+                            <div
+                              className="grid h-8 w-10 place-items-center rounded-md bg-white/20 seller-summary-icon"
+                              style={{ animationDelay: `${index * 0.2}s` }}
+                            >
                               <Icon className="h-5 w-5" />
                             </div>
-                            <div className={`ml-2 w-full text-right leading-none opacity-95 ${isAmountCard ? 'text-[18px] font-semibold tracking-[-0.02em] whitespace-nowrap sm:text-[19px]' : 'text-[52px] font-bold'}`}>
+                            <div className={`ml-2 w-full text-right leading-none opacity-95 ${isAmountCard ? 'whitespace-nowrap text-[17px] font-semibold tracking-[-0.02em] sm:text-[18px]' : 'text-[44px] font-semibold sm:text-[46px]'}`}>
                               {card.label}
                             </div>
                           </div>
-                          <div className="mt-1 border-t border-white/25 pt-2 text-center text-[16px] font-semibold">{card.caption}</div>
+                          <div className="mt-auto flex h-[22px] items-center justify-center border-t border-white/25 text-center text-[13px] font-semibold leading-none">{card.caption}</div>
                         </article>
                       );
                     })}
@@ -2109,7 +2456,7 @@ export default function SellerDashboardHome() {
               </div>
             </section>
 
-            <section className="mt-5 rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
+            <section className="mt-2.5 rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
               <div className="grid grid-cols-3 gap-3">
                 {quickActions.map((action) => {
                   const Icon = action.icon;
@@ -2118,36 +2465,36 @@ export default function SellerDashboardHome() {
                       key={action.key}
                       type="button"
                       onClick={() => handleNavigateSellerView(action.key)}
-                      className="flex min-h-[104px] flex-col items-center justify-center rounded-[16px] border border-slate-200 bg-white px-2 py-3 shadow-sm transition hover:border-orange-300 hover:bg-orange-50"
+                      className="seller-menu-hover group relative flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-3.5 py-3 text-center shadow-sm transition-all duration-200 hover:border-slate-300 hover:from-white hover:to-slate-100 hover:shadow-md active:scale-[0.98]"
                     >
-                      <span className={`${action.color}`}>{Icon ? iconForAction(action.key) : null}</span>
-                      <span className="mt-2 text-center text-[13px] font-medium leading-4 text-slate-700 bangla-font">{t(action.labelKey)}</span>
+                      <span className={`${action.color} transition-transform duration-200 group-hover:-translate-y-0.5`}>{Icon ? iconForAction(action.key) : null}</span>
+                      <span className="mt-2.5 whitespace-nowrap text-center text-[11px] font-semibold leading-none text-slate-700 bangla-font transition-colors duration-200 group-hover:text-orange-500">{t(action.labelKey)}</span>
                     </button>
                   );
                 })}
               </div>
             </section>
 
-            <section className="mt-5 rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
+            <section className="mt-2.5 rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
               <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                <h2 className="whitespace-nowrap text-[22px] font-bold sm:text-[28px]">
+                <h2 className="whitespace-nowrap text-[19px] font-semibold uppercase tracking-tight sm:text-[22px]">
                   <span className="text-orange-500">Inventory </span>
                   <span className="text-slate-800">Stock</span>
                 </h2>
-                <div className="w-full max-w-[170px] rounded-full border border-orange-300 px-3 py-1.5 sm:max-w-[220px]">
+                <div className="w-full max-w-[170px] rounded-full border border-orange-300 px-3 py-1 sm:max-w-[220px]">
                   <div className="flex items-center gap-2 text-slate-400">
-                    <Search className="h-4 w-4" />
+                    <Search className="h-3.5 w-3.5" />
                     <input
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
                       placeholder={t('seller.searchInventory')}
-                      className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+                      className="w-full bg-transparent text-[11px] font-normal outline-none placeholder:text-[11px] placeholder:font-normal placeholder:text-slate-400"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 grid max-h-[620px] grid-cols-2 gap-3 overflow-y-auto pr-1">
+              <div className="mt-3 grid max-h-[620px] grid-cols-2 gap-2 overflow-y-auto pr-0">
                 {visibleInventory.map((item, index) => {
                   const note = stockNoteByProductCode.get(item.code);
                   const cardKey = `inventory-${item.code}-${index}`;
@@ -2166,9 +2513,9 @@ export default function SellerDashboardHome() {
                         onPointerUp={handleProductCardPressEnd}
                         onPointerLeave={handleProductCardPressEnd}
                         onPointerCancel={handleProductCardPressEnd}
-                        className={`grid min-h-[78px] w-full grid-cols-[1fr_auto] overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left shadow-sm transition hover:border-orange-300 hover:shadow-md ${holdingProductCard === cardKey ? 'ring-2 ring-orange-200' : ''}`}
+                        className={`no-hover-lift grid min-h-[66px] w-full grid-cols-[1fr_auto] overflow-hidden rounded-[10px] border border-slate-200 bg-white text-left shadow-sm transition hover:border-orange-300 hover:shadow-md ${holdingProductCard === cardKey ? 'ring-2 ring-orange-200' : ''}`}
                       >
-                        <div className="flex items-center gap-2 p-2">
+                        <div className="flex items-start gap-2 p-1.5">
                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
                             {item.image ? (
                               /* eslint-disable-next-line @next/next/no-img-element */
@@ -2177,15 +2524,16 @@ export default function SellerDashboardHome() {
                               <div className="grid h-full w-full place-items-center bg-gradient-to-br from-green-500 to-green-700 text-xl font-black text-white">{item.name.charAt(0)}</div>
                             )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="line-clamp-2 text-[13px] font-semibold leading-4 text-slate-800">{item.name}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">Code: {item.code}</p>
+                          <div className="min-w-0 flex h-14 flex-1 flex-col justify-between py-0.5">
+                            <p className="line-clamp-2 text-[10.5px] font-semibold leading-[0.98rem] text-slate-800">{item.name}</p>
+                            <p className="text-[10px] leading-none text-slate-400">CD: {item.code}</p>
                           </div>
                         </div>
-                        <div className={`flex w-11 items-center justify-center ${stockStripColors[index % stockStripColors.length]}`}>
-                          <div className="rotate-90 text-center text-black dark:text-black">
-                            <div className="whitespace-nowrap text-[12px] font-semibold leading-none">In Stock</div>
-                            <div className="mt-1 text-[18px] font-bold leading-none">{item.stock}</div>
+                        <div className={`flex w-[22px] shrink-0 items-center justify-center ${stockStripColors[index % stockStripColors.length]}`}>
+                          <div className="grid h-full w-full place-items-center">
+                            <span className="inline-block [writing-mode:vertical-rl] text-[8px] font-normal leading-none tracking-[0.02em] text-black dark:text-black">
+                              In stock <span className="text-[9px] font-semibold">{item.stock}</span>
+                            </span>
                           </div>
                         </div>
                       </button>
@@ -2194,37 +2542,83 @@ export default function SellerDashboardHome() {
                 })}
               </div>
 
-              <div className="mt-3 text-center text-[12px] font-semibold text-slate-500">
-                Hold a product for 1 second to add, update, or delete the seller note.
-              </div>
+              <div className="mt-2" />
             </section>
           </>
         ) : orderListView ? (
           <>
-            <div className="mb-3 rounded-full border border-orange-300 bg-white px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-3 text-slate-400">
-                <Search className="h-5 w-5 shrink-0" />
+            <div ref={globalSearchContainerRef} className="relative mb-3 rounded-full border border-orange-300 bg-white px-4 py-2 shadow-sm">
+              <div className="flex items-center gap-2.5 text-slate-400">
+                <Search className="h-4 w-4 shrink-0" />
                 <input
                   value={currentOrdersSearchTerm}
-                  onChange={(event) => setCurrentOrdersSearchTerm(event.target.value)}
+                  onFocus={() => setIsGlobalSearchOpen(true)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCurrentOrdersSearchTerm(value);
+                    setGlobalSearchTerm(value);
+                    setIsGlobalSearchOpen(true);
+                  }}
                   placeholder="Search customers..."
-                  className="w-full bg-transparent text-[15px] outline-none placeholder:text-slate-400 bangla-font"
+                  className="w-full bg-transparent text-[13px] font-light outline-none placeholder:font-light placeholder:text-slate-400 bangla-font"
                 />
               </div>
+
+              {showGlobalSearchResults ? (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                  {globalSellerSearchResults.length > 0 ? (
+                    globalSellerSearchResults.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectGlobalSearchResult(item)}
+                        className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-800">{item.label}</span>
+                          <span className="block truncate text-xs text-slate-500">{item.description}</span>
+                        </span>
+                        <span className="ml-3 shrink-0 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
+                          {item.type}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs font-medium text-slate-500">
+                      No matching data in seller panel.
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
-            <section className="rounded-[18px] border border-slate-200 bg-white p-3.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
-              <div className="flex items-center justify-between gap-3">
-                <h1 className="text-[15px] font-bold uppercase tracking-tight text-orange-500 sm:text-[18px]">{isCustomerLedsView ? 'CUSTOMER/LEDS DETAILS' : 'CUSTOMER/ORDERS DETAILS'}</h1>
-                <button
-                  ref={orderListDateToggleRef}
-                  type="button"
-                  onClick={() => setCurrentDatePanelOpen((prev) => !prev)}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[14px] font-semibold text-slate-700"
-                >
-                  {currentRangeButtonLabel}
-                  <span className="text-xs">▼</span>
-                </button>
+            <section className="rounded-[18px] border border-slate-200 bg-white px-4 pb-4 pt-2.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+                <h1 className="text-[19px] font-semibold uppercase tracking-tight text-orange-500 sm:text-[22px]">{isCustomerLedsView ? 'CUSTOMER/LEDS DETAILS' : 'ORDERS DETAILS'}</h1>
+                <div className="flex items-center gap-2">
+                  {!isCustomerLedsView ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void refreshDeliveryIndicators(false);
+                      }}
+                      disabled={indicatorRefreshLoading}
+                      title={lastIndicatorRefreshAt ? `Last refresh: ${new Date(lastIndicatorRefreshAt).toLocaleTimeString()}` : 'Refresh delivery indicators'}
+                      className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:border-orange-300 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {indicatorRefreshLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                  ) : null}
+                  <button
+                    ref={orderListDateToggleRef}
+                    type="button"
+                    onClick={() => setCurrentDatePanelOpen((prev) => !prev)}
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-[15px] font-normal text-slate-700"
+                  >
+                    {currentRangeButtonLabel}
+                    <span className="text-xs">▼</span>
+                  </button>
+                </div>
               </div>
 
               {!isCustomerLedsView && (ordersSyncState === 'syncing' || ordersSyncState === 'saved') ? (
@@ -2232,14 +2626,10 @@ export default function SellerDashboardHome() {
                   <span
                     className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold sm:text-[12px] ${ordersSyncState === 'syncing'
                       ? 'border border-blue-200 bg-blue-50 text-blue-700'
-                      : ordersSyncState === 'saved'
-                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border border-transparent bg-transparent text-transparent'
+                      : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
                     }`}
                   >
-                    {ordersSyncState === 'syncing'
-                      ? 'Syncing orders...'
-                      : 'Orders saved'}
+                    {ordersSyncState === 'syncing' ? 'Syncing orders...' : 'Orders saved'}
                   </span>
                 </div>
               ) : null}
@@ -2311,19 +2701,19 @@ export default function SellerDashboardHome() {
                   </div>
                 )}
 
-                <div className="flex justify-center">
+                <div className="mt-4 flex justify-center">
                   <button
                     type="button"
                     onClick={() => handleCreateSalesOrder(isCustomerLedsView ? 'leds' : 'sales')}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-green-600 px-5 py-2 text-[15px] font-bold leading-none text-white shadow-sm transition hover:bg-green-700"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-green-600 px-5 py-2 text-[14px] font-semibold leading-none text-white shadow-sm transition hover:bg-green-700"
                   >
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[14px] font-extrabold leading-none">+</span>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[13px] font-normal leading-none">+</span>
                     <span className="leading-none">{isCustomerLedsView ? 'Create New Leds' : 'Create New Sales'}</span>
                   </button>
                 </div>
 
                 {!isCustomerLedsView ? (
-                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <div className="mt-4 flex min-h-[34px] flex-nowrap items-center justify-center gap-0.5 overflow-x-auto py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {currentFilterChips.map((chip) => {
                       const active = currentStatusFilter === chip.key;
                       return (
@@ -2333,7 +2723,7 @@ export default function SellerDashboardHome() {
                           onClick={() => {
                             setSalesStatusFilter(chip.key as SalesFilterStatus);
                           }}
-                          className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition sm:text-[12px] ${active ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300 hover:text-orange-600'}`}
+                          className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-1.5 text-[8px] font-semibold leading-none transition sm:px-2 sm:text-[9px] ${active ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300 hover:text-orange-600'}`}
                         >
                           {chip.label}
                         </button>
@@ -2342,7 +2732,7 @@ export default function SellerDashboardHome() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 space-y-4" style={{ overflowAnchor: 'none' }}>
                   {(isCustomerLedsView
                     ? [
                         {
@@ -2362,8 +2752,8 @@ export default function SellerDashboardHome() {
                     return (
                       <section key={section.key} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
                         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2">
-                          <h2 className={`text-[16px] font-bold leading-tight sm:text-[20px] ${section.titleClass}`}>{section.label}</h2>
-                          <p className="text-[13px] font-semibold text-slate-600 sm:text-[15px]">{currentPanelDateLabel}</p>
+                          <h2 className={`text-[15px] font-semibold leading-tight sm:text-[18px] ${section.titleClass}`}>{section.label}</h2>
+                          <p className="text-[11px] font-normal text-slate-600 sm:text-[12px]">{currentPanelDateLabel}</p>
                         </div>
 
                         <div className={`${isCustomerLedsView ? 'max-h-[calc(100dvh-290px)]' : 'max-h-[132px]'} space-y-2 overflow-y-auto px-3 py-3 pr-2`}>
@@ -2377,13 +2767,42 @@ export default function SellerDashboardHome() {
                                 onTouchStart={() => handleSalesRowPressStart(`${section.key}-${item.orderId}-${index}`)}
                                 onTouchEnd={handleSalesRowPressEnd}
                                 onTouchCancel={handleSalesRowPressEnd}
-                                className="rounded-md bg-gradient-to-b from-slate-200 to-slate-100 px-2 py-1.5 text-[10px] font-medium text-slate-600 sm:text-[11px]"
+                                className="rounded-md border border-[rgba(148,163,184,0.35)] bg-[rgba(148,163,184,0.06)] px-2 py-1.5 text-[10px] font-medium text-slate-600 sm:text-[11px]"
                               >
-                                <div className="grid grid-cols-[0.9fr_1.2fr_1fr_0.9fr] gap-2 text-[10px] leading-tight whitespace-nowrap sm:grid-cols-[0.85fr_1.2fr_1fr_0.9fr] sm:text-[11px]">
-                                  <p className="truncate">ID: <span className="font-semibold text-slate-700">{item.orderId}</span></p>
-                                  <p className="truncate">NAME: <span className="font-semibold text-slate-700">{item.name}</span></p>
-                                  <p className="truncate">MOBILE: <span className="font-semibold text-slate-700">{item.mobile}</span></p>
-                                  <p className="truncate">DATE: <span className="font-semibold text-slate-700">{item.date}</span></p>
+                                <div className="flex items-center gap-1.5 sm:gap-2">
+                                  <div className="grid flex-1 grid-cols-[0.82fr_1.02fr_1fr_0.9fr] gap-1 text-[9px] leading-tight whitespace-nowrap sm:grid-cols-[0.85fr_1.2fr_1fr_0.9fr] sm:gap-2 sm:text-[11px]">
+                                    <p className="min-w-0 overflow-hidden text-ellipsis">
+                                      <span className="font-medium text-slate-500 sm:hidden">ID:</span>
+                                      <span className="hidden font-medium text-slate-500 sm:inline">ID:</span>{' '}
+                                      <span className="font-semibold text-slate-700">{item.orderId}</span>
+                                    </p>
+                                    <p className="min-w-0 overflow-hidden text-ellipsis">
+                                      <span className="font-medium text-slate-500 sm:hidden">N:</span>
+                                      <span className="hidden font-medium text-slate-500 sm:inline">NAME:</span>{' '}
+                                      <span className="font-semibold text-slate-700">{item.name}</span>
+                                    </p>
+                                    <p className="min-w-0 overflow-hidden text-ellipsis">
+                                      <span className="font-medium text-slate-500 sm:hidden">M:</span>
+                                      <span className="hidden font-medium text-slate-500 sm:inline">MOBILE:</span>{' '}
+                                      <span className="font-semibold text-slate-700">{item.mobile}</span>
+                                    </p>
+                                    <p className="min-w-0 overflow-hidden text-ellipsis">
+                                      <span className="font-medium text-slate-500 sm:hidden">D:</span>
+                                      <span className="hidden font-medium text-slate-500 sm:inline">DATE:</span>{' '}
+                                      <span className="font-semibold text-slate-700">{item.date}</span>
+                                    </p>
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+                                    <span
+                                      title={`SMS: ${(item.smsState || 'pending').toUpperCase()}`}
+                                      className={`inline-block h-4 w-4 rounded-full border sm:h-5 sm:w-5 ${getIndicatorDotClass('sms', normalizeDeliveryIndicatorState(item.smsState))}`}
+                                    />
+                                    <span
+                                      title={`Courier: ${(item.courierState || 'pending').toUpperCase()}`}
+                                      className={`inline-block h-4 w-4 rounded-full border sm:h-5 sm:w-5 ${getIndicatorDotClass('courier', normalizeDeliveryIndicatorState(item.courierState))}`}
+                                    />
+                                  </div>
                                 </div>
 
                                 {holdingSalesRow === `${section.key}-${item.orderId}-${index}` && activeSalesActionRow !== `${section.key}-${item.orderId}-${index}` ? (
@@ -2447,12 +2866,12 @@ export default function SellerDashboardHome() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3 py-4">
                 <div className="max-h-[94vh] w-full max-w-[760px] overflow-y-auto rounded-[14px] border border-slate-300 bg-white shadow-2xl">
                   <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-                    <h3 className="text-[18px] font-semibold text-slate-900">{editingSalesOrder ? (orderFlowType === 'leds' ? 'Edit Customer Led' : 'Edit Customer Order') : (orderFlowType === 'leds' ? 'Create New Customer Leds' : 'Create New Customer Orders')}</h3>
+                    <h3 className="text-[18px] font-normal text-slate-900">{editingSalesOrder ? (orderFlowType === 'leds' ? 'Edit Customer Led' : 'Edit Customer Order') : (orderFlowType === 'leds' ? 'Create New Customer Leds' : 'Create New Customer Orders')}</h3>
                     <button
                       type="button"
                       onClick={handleCloseCreateSalesModal}
                       className="text-red-500 transition hover:text-red-600"
-                      aria-label="Close Create Sales modal"
+                      aria-label="Close Create Sale modal"
                     >
                       <X className="h-7 w-7" />
                     </button>
@@ -2461,12 +2880,12 @@ export default function SellerDashboardHome() {
                   <form onSubmit={handleSubmitCreateSales} className="space-y-4">
                     <div className="border-b border-slate-200 px-6 py-4">
                       <div className="flex items-center justify-center gap-3">
-                        <span className="text-[16px] font-semibold text-slate-600">Status</span>
+                        <span className="text-[16px] font-normal text-slate-600">Status</span>
                         <div ref={salesStatusDropdownRef} className="relative">
                           <button
                             type="button"
                             onClick={() => setIsStatusDropdownOpen((prev) => !prev)}
-                            className={`inline-flex min-w-[238px] items-center justify-between rounded-[12px] border border-slate-300 bg-white px-4 py-1.5 text-[16px] font-bold outline-none ${salesStatusTextClass[createSalesForm.status]}`}
+                            className={`inline-flex min-w-[238px] items-center justify-between rounded-[12px] border border-slate-300 bg-white px-4 py-1.5 text-[16px] font-semibold outline-none ${salesStatusTextClass[createSalesForm.status]}`}
                           >
                             {salesStatusLabel[createSalesForm.status]}
                             <span className="ml-4 text-slate-500">▾</span>
@@ -2496,31 +2915,31 @@ export default function SellerDashboardHome() {
                       <div className="grid gap-4 sm:grid-cols-[1.2fr_1fr]">
                         <div className="space-y-3">
                           <div>
-                            <label className="mb-1 block text-[16px] font-semibold text-slate-700">Order Date</label>
+                            <label className="mb-1 block text-[16px] font-normal text-slate-500">Order Date</label>
                             <input
                               type="date"
                               value={createSalesForm.orderDate}
                               onChange={(event) => handleCreateSalesInput('orderDate', event.target.value)}
-                              className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                              className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                             />
                           </div>
                           <div>
-                            <label className="mb-1 block text-[16px] font-semibold text-slate-700">Order ID</label>
+                            <label className="mb-1 block text-[16px] font-normal text-slate-500">Order ID</label>
                             <input
                               value={createSalesForm.orderId}
                               onChange={(event) => handleCreateSalesInput('orderId', event.target.value)}
-                              className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                              className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                             />
                           </div>
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Products Sample</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Products Sample</label>
                           <input ref={salesSampleInputRef} type="file" accept="image/*" onChange={handleSalesSampleImage} className="hidden" />
                           <button
                             type="button"
                             onClick={() => salesSampleInputRef.current?.click()}
-                            className="relative flex aspect-square w-full flex-col items-center justify-center overflow-hidden rounded-[12px] border border-slate-300 bg-slate-50 text-slate-500 transition hover:bg-slate-100"
+                            className="relative flex aspect-square w-full flex-col items-center justify-center overflow-hidden rounded-[12px] border border-slate-300 bg-slate-50/70 text-slate-500 transition hover:bg-slate-100"
                           >
                             {createSalesForm.sampleImageUrl ? (
                               <>
@@ -2542,16 +2961,16 @@ export default function SellerDashboardHome() {
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-[16px] font-semibold text-slate-700">Customer Name</label>
+                        <label className="mb-1 block text-[16px] font-normal text-slate-500">Customer Name</label>
                         <input
                           value={createSalesForm.customerName}
                           onChange={(event) => handleCreateSalesInput('customerName', event.target.value)}
-                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                         />
                       </div>
 
                       <div>
-                        <div className="mb-1 flex items-center gap-5 text-[16px] font-semibold text-slate-700">
+                        <div className="mb-1 flex items-center gap-5 text-[16px] font-normal text-slate-500">
                           <label className="inline-flex items-center gap-2">
                             <input
                               type="radio"
@@ -2576,34 +2995,34 @@ export default function SellerDashboardHome() {
                         <input
                           value={createSalesForm.contactValue}
                           onChange={(event) => handleCreateSalesInput('contactValue', event.target.value)}
-                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-[16px] font-semibold text-slate-700">Village/Road</label>
+                        <label className="mb-1 block text-[16px] font-normal text-slate-500">Village/Road</label>
                         <input
                           value={createSalesForm.villageRoad}
                           onChange={(event) => handleCreateSalesInput('villageRoad', event.target.value)}
-                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                          className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                         />
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Police station</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Police station</label>
                           <input
                             value={createSalesForm.policeStation}
                             onChange={(event) => handleCreateSalesInput('policeStation', event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Distric</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Distric</label>
                           <input
                             value={createSalesForm.district}
                             onChange={(event) => handleCreateSalesInput('district', event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                           />
                         </div>
                       </div>
@@ -2611,38 +3030,38 @@ export default function SellerDashboardHome() {
 
                     <div className="space-y-4 border-t border-slate-200 px-6 py-4">
                       <div>
-                        <label className="mb-1 block text-[16px] font-semibold text-slate-700">Products Details</label>
+                        <label className="mb-1 block text-[16px] font-normal text-slate-500">Products Details</label>
                         <textarea
                           rows={5}
                           value={createSalesForm.productsDetails}
                           onChange={(event) => handleCreateSalesInput('productsDetails', event.target.value)}
-                          className="w-full resize-y rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                          className="w-full resize-y rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                         />
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-3">
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Sub Total</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Sub Total</label>
                           <input
                             value={createSalesForm.subTotal}
                             onChange={(event) => handleCreateSalesInput('subTotal', event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Discount</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Discount</label>
                           <input
                             value={createSalesForm.discount}
                             onChange={(event) => handleCreateSalesInput('discount', event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-400"
+                            className="w-full rounded-[12px] border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-orange-400"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[16px] font-semibold text-slate-700">Total Taka</label>
+                          <label className="mb-1 block text-[16px] font-normal text-slate-500">Total Taka</label>
                           <input
                             value={createSalesForm.totalTaka}
                             readOnly
-                            className="w-full cursor-not-allowed rounded-[12px] border border-slate-300 bg-slate-100 px-3 py-2 text-sm outline-none"
+                            className="w-full cursor-not-allowed rounded-[12px] border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-black outline-none"
                           />
                         </div>
                       </div>
@@ -2652,16 +3071,16 @@ export default function SellerDashboardHome() {
                       <button
                         type="button"
                         onClick={handleCloseCreateSalesModal}
-                        className="min-w-[140px] rounded-full border border-slate-300 bg-white px-5 py-2 text-[18px] font-medium text-slate-600 transition hover:bg-slate-50"
+                        className="inline-flex min-w-[170px] items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-1.5 text-[18px] font-medium text-slate-600 transition hover:bg-slate-50"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-2 text-[18px] font-bold text-white transition hover:bg-green-700"
+                        className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-2 text-[18px] font-normal text-white transition hover:bg-green-700"
                       >
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[14px] font-extrabold leading-none">+</span>
-                        <span className="leading-none">{editingSalesOrder ? (orderFlowType === 'leds' ? 'Update Led' : 'Update Sales') : (orderFlowType === 'leds' ? 'Create Led' : 'Create Sales')}</span>
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[14px] font-normal leading-none">+</span>
+                        <span className="leading-none">{editingSalesOrder ? (orderFlowType === 'leds' ? 'Update Led' : 'Update Sale') : (orderFlowType === 'leds' ? 'Create Led' : 'Create Sale')}</span>
                       </button>
                     </div>
                   </form>
@@ -2671,16 +3090,49 @@ export default function SellerDashboardHome() {
           </>
         ) : productStockView ? (
           <>
-            <div className="mb-3 rounded-full border border-orange-300 bg-white px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-3 text-slate-400">
-                <Search className="h-5 w-5 shrink-0" />
+            <div ref={globalSearchContainerRef} className="relative mb-3 rounded-full border border-orange-300 bg-white px-4 py-2 shadow-sm">
+              <div className="flex items-center gap-2.5 text-slate-400">
+                <Search className="h-4 w-4 shrink-0" />
                 <input
                   value={productStockSearchTerm}
-                  onChange={(event) => setProductStockSearchTerm(event.target.value)}
+                  onFocus={() => setIsGlobalSearchOpen(true)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setProductStockSearchTerm(value);
+                    setGlobalSearchTerm(value);
+                    setIsGlobalSearchOpen(true);
+                  }}
                   placeholder={productStockStage === 'products' ? 'Search products' : 'Search categories'}
-                  className="w-full bg-transparent text-[15px] outline-none placeholder:text-slate-400 bangla-font"
+                  className="w-full bg-transparent text-[13px] font-light outline-none placeholder:font-light placeholder:text-slate-400 bangla-font"
                 />
               </div>
+
+              {showGlobalSearchResults ? (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                  {globalSellerSearchResults.length > 0 ? (
+                    globalSellerSearchResults.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectGlobalSearchResult(item)}
+                        className="flex w-full items-start justify-between rounded-xl px-3 py-2 text-left transition hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-800">{item.label}</span>
+                          <span className="block truncate text-xs text-slate-500">{item.description}</span>
+                        </span>
+                        <span className="ml-3 shrink-0 rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
+                          {item.type}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center text-xs font-medium text-slate-500">
+                      No matching data in seller panel.
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
 
             {productStockStage === 'categories' ? (
@@ -2747,7 +3199,7 @@ export default function SellerDashboardHome() {
                   Selected: <span className="text-slate-700">{selectedSellerCategory?.name || 'Category'}</span>
                 </div>
 
-                <div className="mt-3 grid max-h-[620px] grid-cols-2 gap-3 overflow-y-auto pr-1">
+                <div className="mt-3 grid max-h-[620px] grid-cols-2 gap-2 overflow-y-auto pr-0">
                   {filteredCategoryProducts.map((item, index) => {
                     const note = stockNoteByProductCode.get(item.code);
                     const cardKey = `${item.code}-${index}`;
@@ -2766,9 +3218,9 @@ export default function SellerDashboardHome() {
                           onPointerUp={handleProductCardPressEnd}
                           onPointerLeave={handleProductCardPressEnd}
                           onPointerCancel={handleProductCardPressEnd}
-                          className={`grid min-h-[78px] grid-cols-[1fr_auto] overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left shadow-sm transition hover:border-orange-300 hover:shadow-md ${holdingProductCard === cardKey ? 'ring-2 ring-orange-200' : ''}`}
+                          className={`no-hover-lift grid min-h-[66px] w-full grid-cols-[1fr_auto] overflow-hidden rounded-[10px] border border-slate-200 bg-white text-left shadow-sm transition hover:border-orange-300 hover:shadow-md ${holdingProductCard === cardKey ? 'ring-2 ring-orange-200' : ''}`}
                         >
-                          <div className="flex min-w-0 items-center gap-2 p-2">
+                          <div className="flex min-w-0 items-start gap-2 p-1.5">
                             <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
                               {item.image ? (
                                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -2777,15 +3229,16 @@ export default function SellerDashboardHome() {
                                 <div className="grid h-full w-full place-items-center bg-gradient-to-br from-green-500 to-green-700 text-xl font-black text-white">{item.name.charAt(0)}</div>
                               )}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="line-clamp-2 text-[13px] font-semibold leading-4 text-slate-800">{item.name}</p>
-                              <p className="mt-1 text-[11px] text-slate-400">Code: {item.code}</p>
+                            <div className="min-w-0 flex h-14 flex-1 flex-col justify-between py-0.5">
+                              <p className="line-clamp-2 text-[10.5px] font-semibold leading-[0.98rem] text-slate-800">{item.name}</p>
+                              <p className="text-[10px] leading-none text-slate-400">CD: {item.code}</p>
                             </div>
                           </div>
-                          <div className={`flex w-11 items-center justify-center ${stockStripColors[index % stockStripColors.length]}`}>
-                            <div className="rotate-90 text-center text-black dark:text-black">
-                              <div className="whitespace-nowrap text-[12px] font-semibold leading-none">In Stock</div>
-                              <div className="mt-1 text-[18px] font-bold leading-none">{item.stock}</div>
+                          <div className={`flex w-[22px] shrink-0 items-center justify-center ${stockStripColors[index % stockStripColors.length]}`}>
+                            <div className="grid h-full w-full place-items-center">
+                              <span className="inline-block [writing-mode:vertical-rl] text-[8px] font-normal leading-none tracking-[0.02em] text-black dark:text-black">
+                                In stock <span className="text-[9px] font-semibold">{item.stock}</span>
+                              </span>
                             </div>
                           </div>
                         </button>
@@ -2794,9 +3247,7 @@ export default function SellerDashboardHome() {
                   })}
                 </div>
 
-                <div className="mt-3 text-center text-[12px] font-semibold text-slate-500">
-                  Hold a product for 1 second to add, update, or delete the seller note.
-                </div>
+                <div className="mt-2" />
 
                 {filteredCategoryProducts.length === 0 ? (
                   <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
@@ -2834,12 +3285,12 @@ export default function SellerDashboardHome() {
             <div className="w-full max-w-[540px] overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
                 <div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-slate-900">
-                  <h3 className="text-[20px] font-bold leading-none sm:text-[24px]">
-                    <span className="text-orange-500">Seller Product </span>
-                    <span className="text-slate-700">Stock Note</span>
+                  <h3 className="text-[18px] font-semibold leading-none sm:text-[21px]">
+                    <span className="text-orange-500">Product Stock </span>
+                    <span className="text-slate-700">Note</span>
                   </h3>
                   <span className="text-[20px] text-slate-300 sm:text-[24px]">|</span>
-                  <span className="text-[14px] font-semibold text-slate-500 sm:text-[16px]">Seller ID: {profile.sellerId || 'SELLER'}</span>
+                  <span className="text-[12px] font-medium text-slate-500 sm:text-[14px]">ID: {profile.sellerId || 'SELLER'}</span>
                 </div>
                 <button
                   type="button"

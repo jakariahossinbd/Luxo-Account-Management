@@ -13,6 +13,7 @@ import {
 const requestSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1),
+  expectedRole: z.enum(['ADMIN', 'SELLER']).optional(),
 });
 
 export async function POST(request: Request) {
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'wrong email & password' }, { status: 400 });
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, expectedRole } = parsed.data;
 
     const user = await prisma.user.findUnique({
       where: { email },
@@ -49,6 +50,10 @@ export async function POST(request: Request) {
 
     if (!isValid || user.status !== 'ACTIVE' || !isAllowedFingerprintRole(user.role)) {
       return NextResponse.json({ success: false, message: 'wrong email & password' }, { status: 401 });
+    }
+
+    if (expectedRole && user.role !== expectedRole) {
+      return NextResponse.json({ success: false, message: `${expectedRole} account required` }, { status: 403 });
     }
 
     const options = await generateRegistrationOptions({

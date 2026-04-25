@@ -34,7 +34,7 @@
     "totalDelivery": "মোট ডেলিভারি",
     "totalCanceled": "মোট বাতিল",
     "totalSale": "মোট বিক্রয়",
-    "createSales": "সেলস তৈরি",
+    "createSales": "সেল তৈরি",
     "customerLeds": "কাস্টমার লেডস",
     "productStock": "পণ্য ও স্টক",
     "attendance": "অ্যাটেনডেন্স",
@@ -82,7 +82,12 @@
       "productService": "পণ্য ও সেবা",
       "accounting": "হিসাব",
       "reports": "প্রতিবেদন",
-      "sellerManage": "বিক্রেতা ব্যবস্থাপনা"
+      "sellerManage": "বিক্রেতা ব্যবস্থাপনা",
+      "integrations": "ইন্টিগ্রেশন"
+    },
+    "integrations": {
+      "courier": "কুরিয়ার ইন্টিগ্রেশন",
+      "sms": "এসএমএস গেটওয়ে"
     },
     "menuDescriptions": {
       "salesPayment": "বিক্রয় লেনদেন ও পেমেন্ট পরিচালনা করুন",

@@ -24,22 +24,62 @@ type VerificationPayload = {
     lat?: number;
     lng?: number;
   };
+  locationAccuracyMeters?: number;
 };
+
+function evaluateVerification(
+  verification: VerificationPayload | undefined,
+  locationPolicy: LocationPolicy,
+) {
+  const selfieVerified = Boolean(verification?.selfieVerified);
+  const lat = Number(verification?.location?.lat);
+  const lng = Number(verification?.location?.lng);
+  const accuracyMeters = Number(verification?.locationAccuracyMeters);
+  const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
+
+  let distance: number | null = null;
+  let locationVerified = false;
+
+  if (hasLocation) {
+    distance = distanceMeters(lat, lng, locationPolicy.officeLatitude, locationPolicy.officeLongitude);
+    const effectiveRadius = locationPolicy.allowedRadiusMeters + (Number.isFinite(accuracyMeters) ? Math.max(0, accuracyMeters) : 0);
+    locationVerified = distance <= effectiveRadius;
+  }
+
+  const requireSelfie = locationPolicy.requireSelfie;
+  const requireLocation = locationPolicy.requireLocation;
+
+  const verificationSatisfied =
+    (!requireSelfie && !requireLocation)
+    || (requireSelfie && !requireLocation && selfieVerified)
+    || (!requireSelfie && requireLocation && locationVerified)
+    || (requireSelfie && requireLocation && (selfieVerified || locationVerified));
+
+  return {
+    selfieVerified,
+    hasLocation,
+    locationVerified,
+    distance,
+    verificationSatisfied,
+    coords: hasLocation ? { lat, lng } : null,
+    accuracyMeters: Number.isFinite(accuracyMeters) ? Math.max(0, accuracyMeters) : null,
+  };
+}
 
 const CLOCK_WINDOW_KEY = 'attendance.clock_window';
 const LOCATION_POLICY_KEY = 'attendance.location_policy';
 const VERIFICATION_ACTIVITY = 'ATTENDANCE_VERIFICATION';
 const DEFAULT_CLOCK_WINDOW: ClockWindow = {
-  clockInStart: '08:00',
-  clockInEnd: '11:00',
-  clockOutStart: '16:00',
-  clockOutEnd: '23:00',
+  clockInStart: '00:00',
+  clockInEnd: '23:59',
+  clockOutStart: '00:00',
+  clockOutEnd: '23:59',
 };
 
 const DEFAULT_LOCATION_POLICY: LocationPolicy = {
-  officeLatitude: 23.8103,
-  officeLongitude: 90.4125,
-  allowedRadiusMeters: 250,
+  officeLatitude: 23.9287696,
+  officeLongitude: 90.3778525,
+  allowedRadiusMeters: 100,
   requireLocation: true,
   requireSelfie: true,
 };
@@ -121,6 +161,10 @@ function toMinutes(time: string): number {
 }
 
 function isWithinWindow(nowMinutes: number, start: string, end: string): boolean {
+  if (start === '00:00' && end === '23:59') {
+    return true;
+  }
+
   const startMinutes = toMinutes(start);
   const endMinutes = toMinutes(end);
   if (startMinutes <= endMinutes) {
@@ -179,7 +223,7 @@ export async function GET(request: Request) {
       }),
       getClockWindow(),
       getLocationPolicy(),
-      prisma.employee.findUnique({ where: { userId: session.user.id }, select: { id: true } }),
+      prisma.employee.findUnique({ where: { userId: session.user.id }, select: { id: true, salary: true } }),
       prisma.salary.findUnique({
         where: { userId_month_year: { userId: session.user.id, month, year } },
         select: { netSalary: true },
@@ -231,16 +275,11 @@ export async function GET(request: Request) {
     }
 
     let todayEarning = 0;
-    if (employee?.id) {
-      const salesSummary = await prisma.sale.aggregate({
-        where: {
-          employeeId: employee.id,
-          createdAt: { gte: today, lt: tomorrow },
-          status: { not: 'CANCELLED' },
-        },
-        _sum: { total: true },
-      });
-      todayEarning = Math.round(salesSummary._sum.total || 0);
+    if (employee?.salary && attendance?.status === 'PRESENT') {
+      // Today's earning is based on fixed monthly salary divided by working days per month
+      const monthlyEarning = employee.salary || 0;
+      const workingDaysPerMonth = 26;
+      todayEarning = Math.round(monthlyEarning / workingDaysPerMonth);
     }
 
     return NextResponse.json({
@@ -258,7 +297,7 @@ export async function GET(request: Request) {
         })),
         holidays: holidayDateKeys,
         salary: {
-          monthly: Math.round(salary?.netSalary || 0),
+          monthly: employee?.salary || 0,
         },
         todayEarning,
         clockWindow,
@@ -319,41 +358,27 @@ export async function POST(request: Request) {
         );
       }
 
-      if (locationPolicy.requireSelfie && !verification?.selfieVerified) {
+      const verificationResult = evaluateVerification(verification, locationPolicy);
+
+      if (!verificationResult.verificationSatisfied) {
         await logVerificationAttempt(session.user.id, {
           status: 'FAILED',
-          reason: 'SELFIE_NOT_VERIFIED',
+          reason: 'VERIFICATION_FAILED_CLOCK_IN',
+          selfieVerified: verificationResult.selfieVerified,
+          hasLocation: verificationResult.hasLocation,
+          locationVerified: verificationResult.locationVerified,
+          distanceMeters: verificationResult.distance ? Math.round(verificationResult.distance) : null,
+          allowedRadiusMeters: locationPolicy.allowedRadiusMeters,
         });
-        return NextResponse.json({ success: false, error: 'Selfie/Liveness verification is required for Clock In' }, { status: 400 });
-      }
 
-      if (locationPolicy.requireLocation) {
-        const lat = Number(verification?.location?.lat);
-        const lng = Number(verification?.location?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          await logVerificationAttempt(session.user.id, {
-            status: 'FAILED',
-            reason: 'LOCATION_NOT_PROVIDED',
-          });
-          return NextResponse.json({ success: false, error: 'Office location verification is required for Clock In' }, { status: 400 });
+        if (locationPolicy.requireSelfie && locationPolicy.requireLocation) {
+          return NextResponse.json({ success: false, error: 'Clock In requires Selfie/Liveness OR Office Location verification' }, { status: 400 });
         }
-
-        const distance = distanceMeters(lat, lng, locationPolicy.officeLatitude, locationPolicy.officeLongitude);
-        if (distance > locationPolicy.allowedRadiusMeters) {
-          await logVerificationAttempt(session.user.id, {
-            status: 'FAILED',
-            reason: 'OUTSIDE_GEOFENCE',
-            distanceMeters: Math.round(distance),
-            allowedRadiusMeters: locationPolicy.allowedRadiusMeters,
-            userLocation: { lat, lng },
-          });
-          return NextResponse.json(
-            {
-              success: false,
-              error: `You are outside the allowed office radius (${locationPolicy.allowedRadiusMeters}m)`,
-            },
-            { status: 400 }
-          );
+        if (locationPolicy.requireSelfie) {
+          return NextResponse.json({ success: false, error: 'Selfie/Liveness verification is required for Clock In' }, { status: 400 });
+        }
+        if (locationPolicy.requireLocation) {
+          return NextResponse.json({ success: false, error: 'Office location verification is required for Clock In' }, { status: 400 });
         }
       }
 
@@ -377,8 +402,10 @@ export async function POST(request: Request) {
       await logVerificationAttempt(session.user.id, {
         status: 'VERIFIED',
         reason: 'CLOCK_IN_ALLOWED',
-        selfieVerified: Boolean(verification?.selfieVerified),
-        location: verification?.location || null,
+        selfieVerified: verificationResult.selfieVerified,
+        locationVerified: verificationResult.locationVerified,
+        location: verificationResult.coords,
+        distanceMeters: verificationResult.distance ? Math.round(verificationResult.distance) : null,
         policy: {
           officeLatitude: locationPolicy.officeLatitude,
           officeLongitude: locationPolicy.officeLongitude,
@@ -401,6 +428,30 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+
+      const verificationResult = evaluateVerification(verification, locationPolicy);
+      if (!verificationResult.verificationSatisfied) {
+        await logVerificationAttempt(session.user.id, {
+          status: 'FAILED',
+          reason: 'VERIFICATION_FAILED_CLOCK_OUT',
+          selfieVerified: verificationResult.selfieVerified,
+          hasLocation: verificationResult.hasLocation,
+          locationVerified: verificationResult.locationVerified,
+          distanceMeters: verificationResult.distance ? Math.round(verificationResult.distance) : null,
+          allowedRadiusMeters: locationPolicy.allowedRadiusMeters,
+        });
+
+        if (locationPolicy.requireSelfie && locationPolicy.requireLocation) {
+          return NextResponse.json({ success: false, error: 'Clock Out requires Selfie/Liveness OR Office Location verification' }, { status: 400 });
+        }
+        if (locationPolicy.requireSelfie) {
+          return NextResponse.json({ success: false, error: 'Selfie/Liveness verification is required for Clock Out' }, { status: 400 });
+        }
+        if (locationPolicy.requireLocation) {
+          return NextResponse.json({ success: false, error: 'Office location verification is required for Clock Out' }, { status: 400 });
+        }
+      }
+
       const hours = (now.getTime() - attendance.checkInTime.getTime()) / (1000 * 60 * 60);
       attendance = await prisma.attendance.update({
         where: { id: attendance.id },
@@ -408,6 +459,20 @@ export async function POST(request: Request) {
           checkOutTime: now,
           totalHours: Math.round(hours * 10) / 10,
           status: 'CHECKED_OUT',
+        },
+      });
+
+      await logVerificationAttempt(session.user.id, {
+        status: 'VERIFIED',
+        reason: 'CLOCK_OUT_ALLOWED',
+        selfieVerified: verificationResult.selfieVerified,
+        locationVerified: verificationResult.locationVerified,
+        location: verificationResult.coords,
+        distanceMeters: verificationResult.distance ? Math.round(verificationResult.distance) : null,
+        policy: {
+          officeLatitude: locationPolicy.officeLatitude,
+          officeLongitude: locationPolicy.officeLongitude,
+          allowedRadiusMeters: locationPolicy.allowedRadiusMeters,
         },
       });
     } else if (action === 'breakStart') {

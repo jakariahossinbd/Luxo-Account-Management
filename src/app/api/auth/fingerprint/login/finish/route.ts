@@ -15,6 +15,7 @@ import {
 
 const requestSchema = z.object({
   email: z.string().trim().email().optional(),
+  expectedRole: z.enum(['ADMIN', 'SELLER']).optional(),
   response: z.custom<AuthenticationResponseJSON>(),
 });
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'Fingerprint login failed' }, { status: 400 });
     }
 
-    const { email, response } = parsed.data;
+    const { email, expectedRole, response } = parsed.data;
 
     let user = null;
     if (email) {
@@ -38,6 +39,10 @@ export async function POST(request: Request) {
 
       if (!user || user.status !== 'ACTIVE' || !isAllowedFingerprintRole(user.role)) {
         return NextResponse.json({ success: false, message: 'Fingerprint login failed' }, { status: 401 });
+      }
+
+      if (expectedRole && user.role !== expectedRole) {
+        return NextResponse.json({ success: false, code: 'ROLE_MISMATCH', message: `${expectedRole} account required` }, { status: 403 });
       }
     }
 
@@ -83,6 +88,10 @@ export async function POST(request: Request) {
 
       if (!user || user.status !== 'ACTIVE' || !isAllowedFingerprintRole(user.role)) {
         return NextResponse.json({ success: false, message: 'Fingerprint login failed' }, { status: 401 });
+      }
+
+      if (expectedRole && user.role !== expectedRole) {
+        return NextResponse.json({ success: false, code: 'ROLE_MISMATCH', message: `${expectedRole} account required` }, { status: 403 });
       }
     }
 

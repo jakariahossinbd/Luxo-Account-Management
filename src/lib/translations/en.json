@@ -34,7 +34,7 @@
     "totalDelivery": "Total Delivery",
     "totalCanceled": "Total Canceled",
     "totalSale": "Total Sale",
-    "createSales": "Create Sales",
+    "createSales": "Create Sale",
     "customerLeds": "Customer Leds",
     "productStock": "Product & Stock",
     "attendance": "Attendance",
@@ -82,7 +82,12 @@
       "productService": "Product & Service",
       "accounting": "Accounting",
       "reports": "Reports",
-      "sellerManage": "Seller Manage"
+      "sellerManage": "Seller Manage",
+      "integrations": "Integrations"
+    },
+    "integrations": {
+      "courier": "Courier Integration",
+      "sms": "SMS Gateway"
     },
     "menuDescriptions": {
       "salesPayment": "Manage sales transactions and payments",

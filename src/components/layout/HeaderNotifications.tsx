@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, Send, AlertCircle } from 'lucide-react';
+import { Bell, Send, AlertCircle, MessageSquare } from 'lucide-react';
 import { useToastContext } from '@/components/ui/ToastProvider';
 import { CommunicationRole, NotificationAudience, useCommunicationStore } from '@/store/communication';
 import { useThemeStore } from '@/store/theme';
@@ -28,6 +28,7 @@ export function HeaderNotifications({ role }: HeaderNotificationsProps) {
   const isDark = theme === 'dark';
 
   const notifications = useCommunicationStore((state) => state.notifications);
+  const chatMessages = useCommunicationStore((state) => state.chatMessages);
   const sendNotification = useCommunicationStore((state) => state.sendNotification);
   const markNotificationsRead = useCommunicationStore((state) => state.markNotificationsRead);
 
@@ -51,6 +52,39 @@ export function HeaderNotifications({ role }: HeaderNotificationsProps) {
     [role, visibleNotifications]
   );
 
+  const unreadChatMessages = useMemo(
+    () =>
+      chatMessages.filter((message) => {
+        if (role === 'admin') {
+          return message.senderRole === 'seller' && !message.readByAdmin;
+        }
+
+        return message.senderRole === 'admin' && !message.readBySeller;
+      }),
+    [chatMessages, role]
+  );
+
+  const unreadSellerThreads = useMemo(() => {
+    if (role !== 'admin') return [] as Array<{ sellerId: string; sellerName: string; count: number }>;
+
+    const map = new Map<string, { sellerId: string; sellerName: string; count: number }>();
+    unreadChatMessages.forEach((message) => {
+      const existing = map.get(message.senderId);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+
+      map.set(message.senderId, {
+        sellerId: message.senderId,
+        sellerName: message.senderName || `Seller ${message.senderId.slice(0, 6)}`,
+        count: 1,
+      });
+    });
+
+    return Array.from(map.values());
+  }, [role, unreadChatMessages]);
+
   useEffect(() => {
     if (open) {
       markNotificationsRead(role);
@@ -68,7 +102,22 @@ export function HeaderNotifications({ role }: HeaderNotificationsProps) {
     return () => document.removeEventListener('mousedown', handleDocumentClick);
   }, []);
 
-  const unreadCount = unreadNotifications.length;
+  const unreadCount = unreadNotifications.length + unreadChatMessages.length;
+
+  const dispatchOpenChat = (sellerId?: string) => {
+    if (typeof window === 'undefined') return;
+
+    window.dispatchEvent(
+      new CustomEvent('luxo:open-chat', {
+        detail: {
+          role,
+          sellerId,
+          source: 'notification',
+        },
+      })
+    );
+    setOpen(false);
+  };
 
   const handleSendNotification = () => {
     const title = notificationTitle.trim();
@@ -120,6 +169,45 @@ export function HeaderNotifications({ role }: HeaderNotificationsProps) {
           </div>
 
           <div className={`max-h-72 overflow-y-auto px-4 py-3 ${isDark ? 'bg-slate-900' : 'bg-white'}`}>
+            {unreadChatMessages.length > 0 ? (
+              <div className="mb-3 space-y-2">
+                {role === 'admin' ? (
+                  unreadSellerThreads.map((thread) => (
+                    <button
+                      key={thread.sellerId}
+                      type="button"
+                      onClick={() => dispatchOpenChat(thread.sellerId)}
+                      className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${isDark ? 'border-orange-300/30 bg-orange-400/10 hover:bg-orange-400/15' : 'border-orange-200 bg-orange-50 hover:bg-orange-100'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4 text-orange-600" />
+                        <div>
+                          <p className={`text-sm font-semibold ${isDark ? 'text-orange-100' : 'text-orange-700'}`}>{thread.sellerName}</p>
+                          <p className={`text-[11px] ${isDark ? 'text-orange-200/80' : 'text-orange-600/80'}`}>Seller ID: {thread.sellerId}</p>
+                        </div>
+                      </div>
+                      <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white">{thread.count}</span>
+                    </button>
+                  ))
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => dispatchOpenChat()}
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition ${isDark ? 'border-orange-300/30 bg-orange-400/10 hover:bg-orange-400/15' : 'border-orange-200 bg-orange-50 hover:bg-orange-100'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-orange-600" />
+                      <div>
+                        <p className={`text-sm font-semibold ${isDark ? 'text-orange-100' : 'text-orange-700'}`}>New admin message</p>
+                        <p className={`text-[11px] ${isDark ? 'text-orange-200/80' : 'text-orange-600/80'}`}>Tap to open chat box</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white">{unreadChatMessages.length}</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
+
             {visibleNotifications.length > 0 ? (
               <div className="space-y-2">
                 {visibleNotifications.slice(0, 5).map((notification) => {

@@ -15,6 +15,7 @@ const createSellerSchema = z.object({
   designation: z.string().min(2, 'Designation is required').optional().default('Seller'),
   salesTargetAmount: z.coerce.number().int().min(1).max(99).optional().default(1),
   monthlyExpensesAmount: z.coerce.number().min(0).optional().default(0),
+  salary: z.coerce.number().min(0).optional().default(0),
 });
 
 function normalizeSalesTargetCount(value: unknown) {
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           employeeCode,
           designation: parsed.designation || 'Seller',
+          salary: parsed.salary || 0,
           salesTargetAmount: normalizeSalesTargetCount(parsed.salesTargetAmount),
           monthlyExpensesAmount: parsed.monthlyExpensesAmount || 0,
           status: true,
@@ -80,6 +82,7 @@ export async function POST(request: NextRequest) {
         sellerId: result.employee.employeeCode,
         name: result.user.name,
         email: result.user.email,
+        salary: result.employee.salary,
         salesTargetAmount: result.employee.salesTargetAmount,
         monthlyExpensesAmount: result.employee.monthlyExpensesAmount,
       },
@@ -134,6 +137,7 @@ export async function GET(request: NextRequest) {
         avatar: seller.user.avatar || '',
         status: seller.status,
         employeeCode: seller.employeeCode,
+        salary: seller.salary,
         salesTargetAmount: seller.salesTargetAmount,
         monthlyExpensesAmount: seller.monthlyExpensesAmount,
         createdAt: seller.createdAt,
@@ -163,7 +167,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, status, phone, address, designation, salesTargetAmount, monthlyExpensesAmount } = body;
+    const { id, status, phone, address, designation, salesTargetAmount, monthlyExpensesAmount, salary } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -199,6 +203,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (monthlyExpensesAmount !== undefined) {
       updates.monthlyExpensesAmount = Number(monthlyExpensesAmount) || 0;
+    }
+    if (salary !== undefined) {
+      updates.salary = Number(salary) || 0;
     }
 
     // Update employee
@@ -237,6 +244,7 @@ export async function PATCH(request: NextRequest) {
         avatar: updatedSeller.user.avatar || '',
         status: updatedSeller.status,
         employeeCode: updatedSeller.employeeCode,
+        salary: updatedSeller.salary,
         salesTargetAmount: updatedSeller.salesTargetAmount,
         monthlyExpensesAmount: updatedSeller.monthlyExpensesAmount,
       },

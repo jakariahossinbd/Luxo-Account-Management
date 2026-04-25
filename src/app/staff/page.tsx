@@ -118,7 +118,7 @@ export default function StaffPage() {
   const roleColor = (session?.user as any)?.role === 'SELLER' ? '#2563eb' : '#8b5cf6';
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', background: '#f5f5f5', minHeight: '100vh' }}>
+    <div style={{ padding: '20px', background: '#f5f5f5', minHeight: '100vh' }}>
       <div style={{ background: roleColor, color: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
         <h1 style={{ margin: 0 }}>Staff Dashboard</h1>
         <p>Welcome, {(session?.user as any)?.name || 'Staff'}</p>

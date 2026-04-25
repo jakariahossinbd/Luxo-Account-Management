@@ -55,7 +55,7 @@ export function SellerSidebar({ isOpen = true, onClose, activeView, onNavigate }
               onNavigate('home');
               onClose?.();
             }}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition ${activeView === 'home' ? itemActiveClass : itemDefaultClass}`}
+            className={`seller-menu-hover flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition ${activeView === 'home' ? itemActiveClass : itemDefaultClass}`}
           >
             <User className="h-5 w-5" />
             <span className="flex-1 font-medium">{t('seller.navigation.dashboard')}</span>
@@ -72,7 +72,7 @@ export function SellerSidebar({ isOpen = true, onClose, activeView, onNavigate }
                     onNavigate(item.key);
                     onClose?.();
                   }}
-                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition ${activeView === item.key ? itemActiveClass : itemDefaultClass}`}
+                  className={`seller-menu-hover flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition ${activeView === item.key ? itemActiveClass : itemDefaultClass}`}
                 >
                   <Icon className="h-5 w-5" />
                   <span className="text-sm font-medium">{item.label}</span>
@@ -85,7 +85,7 @@ export function SellerSidebar({ isOpen = true, onClose, activeView, onNavigate }
             <button
               type="button"
               onClick={() => setSettingsOpen((prev) => !prev)}
-              className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${itemDefaultClass}`}
+              className={`seller-menu-hover flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${itemDefaultClass}`}
             >
               <span className={`flex items-center gap-3 font-semibold ${isDark ? 'text-slate-200' : 'text-slate-600'}`}>
                 <Settings className="h-5 w-5" />
@@ -102,7 +102,7 @@ export function SellerSidebar({ isOpen = true, onClose, activeView, onNavigate }
                     toggleTheme();
                     onClose?.();
                   }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left transition ${itemDefaultClass}`}
+                  className={`seller-menu-hover flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left transition ${itemDefaultClass}`}
                 >
                   <MoonStar className="h-4 w-4 text-orange-500" />
                   <span className="text-sm font-medium">{t('seller.darkMode')}</span>

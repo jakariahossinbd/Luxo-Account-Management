@@ -11,6 +11,7 @@ import {
   BarChart3,
   Users,
   DollarSign,
+  PlugZap,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useThemeStore } from '@/store/theme';
@@ -94,6 +95,16 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
         { label: t('admin.sellerManage.sellers'), href: '/admin/seller-manage' },
         { label: t('admin.sellerManage.details'), href: '/admin/seller-manage/details' },
         { label: t('admin.sellerManage.stats'), href: '/admin/seller-manage/stats' },
+      ],
+    },
+    {
+      id: 'integrations',
+      label: t('admin.menu.integrations'),
+      icon: PlugZap,
+      href: '/admin/integrations/courier',
+      submenu: [
+        { label: t('admin.integrations.courier'), href: '/admin/integrations/courier' },
+        { label: t('admin.integrations.sms'), href: '/admin/integrations/sms' },
       ],
     },
   ];

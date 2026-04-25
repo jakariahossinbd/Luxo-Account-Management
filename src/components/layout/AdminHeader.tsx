@@ -46,7 +46,7 @@ export function AdminHeader({
   const handleLogout = async () => {
     setIsAvatarMenuOpen(false);
     await signOut({ redirect: false });
-    router.replace('/login');
+    router.replace(normalizedRole === 'admin' ? '/login/admin?next=%2Fadmin' : '/login/seller?next=%2Fseller');
   };
 
   return (

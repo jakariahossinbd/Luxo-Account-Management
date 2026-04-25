@@ -157,6 +157,25 @@ export function SupportChatWidget({ role, displayName, senderId }: SupportChatWi
     return () => document.removeEventListener('mousedown', handleDocumentClick);
   }, []);
 
+  useEffect(() => {
+    function handleOpenChat(event: Event) {
+      const customEvent = event as CustomEvent<{ role?: CommunicationRole; sellerId?: string }>;
+      const detail = customEvent.detail || {};
+      if (detail.role && detail.role !== role) {
+        return;
+      }
+
+      setOpen(true);
+
+      if (role === 'admin' && detail.sellerId) {
+        setSelectedSellerId(detail.sellerId);
+      }
+    }
+
+    window.addEventListener('luxo:open-chat', handleOpenChat as EventListener);
+    return () => window.removeEventListener('luxo:open-chat', handleOpenChat as EventListener);
+  }, [role]);
+
   const activeSellerId = role === 'admin' ? selectedSellerId : senderId;
 
   const activeThread = useMemo(

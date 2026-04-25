@@ -2,9 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-
 :root {
+  --font-app: var(--font-poppins);
   --primary: #3b82f6;
   --primary-dark: #2563eb;
   --sidebar: #1e293b;
@@ -15,6 +14,10 @@
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
+}
+
+html[data-language='bn'] {
+  --font-app: var(--font-linoirrit);
 }
 
 html[data-theme='dark'] {
@@ -36,7 +39,7 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-app), system-ui, sans-serif;
 }
 
 body {
@@ -93,7 +96,7 @@ html[data-theme='dark'] ::-webkit-scrollbar-thumb {
 }
 
 .bangla-font {
-  font-family: 'Hind Siliguri', sans-serif;
+  font-family: inherit;
   letter-spacing: normal;
   word-spacing: normal;
   line-height: 1.25;
@@ -132,6 +135,67 @@ html[data-theme='dark'] ::-webkit-scrollbar-thumb {
   height: 24px !important;
   min-width: 24px !important;
   min-height: 24px !important;
+}
+
+@keyframes seller-summary-icon-smart {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  }
+  35% {
+    transform: translateY(-2px) scale(1.05);
+    filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.28));
+  }
+  65% {
+    transform: translateY(1px) scale(0.98);
+    filter: drop-shadow(0 2px 4px rgba(255, 255, 255, 0.14));
+  }
+}
+
+.seller-summary-icon {
+  will-change: transform, filter;
+  animation: seller-summary-icon-smart 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.seller-menu-hover {
+  transform-origin: center;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1), filter 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']) {
+  transform-origin: center;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1), filter 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .seller-menu-hover:hover,
+  button:not(:disabled):hover,
+  [role='button']:not([aria-disabled='true']):hover {
+    transform: translateY(-1px);
+  }
+
+  .no-hover-lift:hover {
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seller-summary-icon {
+    animation: none !important;
+  }
+
+  .seller-menu-hover:hover {
+    animation: none !important;
+  }
+
+  button:not(:disabled):hover,
+  [role='button']:not([aria-disabled='true']):hover {
+    transform: none !important;
+    filter: none !important;
+  }
 }
 
 @layer components {

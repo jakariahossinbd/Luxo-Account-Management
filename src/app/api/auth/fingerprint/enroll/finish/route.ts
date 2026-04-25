@@ -14,6 +14,7 @@ import {
 
 const requestSchema = z.object({
   email: z.string().trim().email(),
+  expectedRole: z.enum(['ADMIN', 'SELLER']).optional(),
   response: z.custom<RegistrationResponseJSON>(),
 });
 
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'Failed to verify fingerprint setup' }, { status: 400 });
     }
 
-    const { email, response } = parsed.data;
+    const { email, expectedRole, response } = parsed.data;
 
     const user = await prisma.user.findUnique({
       where: { email },
@@ -35,6 +36,10 @@ export async function POST(request: Request) {
 
     if (!user || user.status !== 'ACTIVE' || !isAllowedFingerprintRole(user.role)) {
       return NextResponse.json({ success: false, message: 'Failed to verify fingerprint setup' }, { status: 401 });
+    }
+
+    if (expectedRole && user.role !== expectedRole) {
+      return NextResponse.json({ success: false, message: `${expectedRole} account required` }, { status: 403 });
     }
 
     const challenge = await getValidFingerprintChallenge({

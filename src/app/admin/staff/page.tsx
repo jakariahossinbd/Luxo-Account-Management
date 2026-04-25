@@ -159,7 +159,7 @@ export default function AdminStaffPage() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', background: '#f5f5f5', minHeight: '100vh' }}>
+    <div style={{ padding: '20px', background: '#f5f5f5', minHeight: '100vh' }}>
       <div style={{ background: '#dc2626', color: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
         <h1 style={{ margin: 0 }}>{t('admin.staff.managementTitle', language)}</h1>
         <button onClick={() => router.push('/admin')} style={{ marginTop: '10px', padding: '8px 16px', background: 'white', color: '#dc2626', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>← {t('admin.staff.backToAdmin', language)}</button>

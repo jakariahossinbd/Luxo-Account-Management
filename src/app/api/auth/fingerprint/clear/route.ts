@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 const requestSchema = z.object({
   email: z.string().trim().email(),
+  expectedRole: z.enum(['ADMIN', 'SELLER']).optional(),
 });
 
 export async function POST(request: Request) {
@@ -15,15 +16,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'Invalid email' }, { status: 400 });
     }
 
-    const { email } = parsed.data;
+    const { email, expectedRole } = parsed.data;
 
     const user = await prisma.user.findUnique({
       where: { email },
-      select: { id: true },
+      select: { id: true, role: true },
     });
 
     if (!user) {
       return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+    }
+
+    if (expectedRole && user.role !== expectedRole) {
+      return NextResponse.json({ success: false, message: `${expectedRole} account required` }, { status: 403 });
     }
 
     // Delete all WebAuthn credentials for this user

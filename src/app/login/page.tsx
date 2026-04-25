@@ -1,6 +1,6 @@
 'use client';
 
-import { getSession, signIn, signOut, useSession } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCommunicationStore } from '@/store/communication';
@@ -9,7 +9,48 @@ import { startAuthentication, startRegistration } from '@simplewebauthn/browser'
 
 export const dynamic = 'force-dynamic';
 
-const LAST_FINGERPRINT_EMAIL_KEY = 'luxo:last-fingerprint-email';
+type LoginRole = 'ADMIN' | 'SELLER';
+
+function normalizeRole(value: string | null): LoginRole | null {
+  if (value === 'ADMIN' || value === 'SELLER') return value;
+  return null;
+}
+
+function fingerprintEmailKeyForRole(role: LoginRole | null): string {
+  if (!role) return 'luxo:last-fingerprint-email';
+  return `luxo:last-fingerprint-email:${role.toLowerCase()}`;
+}
+
+function fingerprintEmailKeysForLookup(role: LoginRole | null): string[] {
+  if (role === 'ADMIN') {
+    return ['luxo:last-fingerprint-email:admin', 'luxo:last-fingerprint-email'];
+  }
+
+  if (role === 'SELLER') {
+    return ['luxo:last-fingerprint-email:seller', 'luxo:last-fingerprint-email'];
+  }
+
+  return [
+    'luxo:last-fingerprint-email:admin',
+    'luxo:last-fingerprint-email:seller',
+    'luxo:last-fingerprint-email',
+  ];
+}
+
+function getStoredFingerprintEmail(role: LoginRole | null) {
+  if (typeof window === 'undefined') {
+    return { key: null as string | null, email: '' };
+  }
+
+  for (const key of fingerprintEmailKeysForLookup(role)) {
+    const email = window.localStorage.getItem(key)?.trim() || '';
+    if (email) {
+      return { key, email };
+    }
+  }
+
+  return { key: null as string | null, email: '' };
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +63,6 @@ export default function LoginPage() {
   const [forgotOpen, setForgotOpen] = useState(false);
   const [realName, setRealName] = useState('');
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
-  const [fingerprintPressed, setFingerprintPressed] = useState(false);
   const [fingerprintOpen, setFingerprintOpen] = useState(false);
   const [fingerprintEmail, setFingerprintEmail] = useState('');
   const [fingerprintPassword, setFingerprintPassword] = useState('');
@@ -36,6 +76,7 @@ export default function LoginPage() {
   const [clearFingerprintStatus, setClearFingerprintStatus] = useState<null | { type: 'success' | 'error'; message: string }>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showFingerprintPassword, setShowFingerprintPassword] = useState(false);
+  const [isCompletingLogin, setIsCompletingLogin] = useState(false);
 
   const switchMode = searchParams.get('switch') === '1';
   const nextPath = searchParams.get('next');
@@ -43,6 +84,32 @@ export default function LoginPage() {
     nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
       ? nextPath
       : null;
+  const expectedRole = normalizeRole(searchParams.get('role'))
+    || (safeNextPath?.startsWith('/admin') ? 'ADMIN' : null)
+    || (safeNextPath?.startsWith('/seller') ? 'SELLER' : null);
+  const fingerprintEmailKey = fingerprintEmailKeyForRole(expectedRole);
+  const defaultRedirectPath =
+    safeNextPath
+    || (expectedRole === 'ADMIN' ? '/admin' : null)
+    || (expectedRole === 'SELLER' ? '/seller' : null)
+    || '/';
+
+  const resolvePostLoginRedirect = (sessionRole?: string) => {
+    if (safeNextPath) {
+      return safeNextPath;
+    }
+
+    const normalizedRole = (sessionRole || expectedRole || '').toUpperCase();
+    if (normalizedRole === 'ADMIN') {
+      return '/admin';
+    }
+
+    if (normalizedRole === 'SELLER') {
+      return '/seller';
+    }
+
+    return '/';
+  };
 
   const showFingerprintStatus = (type: 'success' | 'error', message: string) => {
     if (typeof document !== 'undefined') {
@@ -54,11 +121,7 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const savedEmail = window.localStorage.getItem(LAST_FINGERPRINT_EMAIL_KEY)?.trim() || '';
+    const { email: savedEmail } = getStoredFingerprintEmail(expectedRole);
 
     if (!savedEmail) {
       return;
@@ -67,10 +130,10 @@ export default function LoginPage() {
     setLastFingerprintEmail(savedEmail);
 
     // Don't prefill email field on main form - keep it blank
-  }, []);
+  }, [expectedRole]);
 
   useEffect(() => {
-    if (status !== 'authenticated') {
+    if (status !== 'authenticated' || isCompletingLogin) {
       return;
     }
 
@@ -80,27 +143,49 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(safeNextPath || '/');
-  }, [status, router, switchMode, switchHandled, safeNextPath]);
+    const sessionRole = (session?.user?.role as string | undefined)?.toUpperCase();
+    const normalizedExpectedRole = expectedRole?.toUpperCase();
+    if (normalizedExpectedRole && sessionRole && sessionRole !== normalizedExpectedRole) {
+      signOut({ redirect: false });
+      setFingerprintLoginStatus({ type: 'error', message: `${normalizedExpectedRole} login required` });
+      return;
+    }
+
+    router.push(defaultRedirectPath);
+  }, [status, router, switchMode, switchHandled, defaultRedirectPath, expectedRole, session?.user?.role, isCompletingLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (switchMode && !switchHandled) {
+      setSwitchHandled(true);
+    }
+    setIsCompletingLogin(true);
     setLoading(true);
     
     const result = await signIn('credentials', {
       email,
       password,
+      expectedRole: expectedRole || undefined,
+      callbackUrl: defaultRedirectPath,
       redirect: false,
     });
 
     setLoading(false);
     
     if (result?.error) {
+      setIsCompletingLogin(false);
       alert('Login failed. Check credentials.');
       return;
     }
 
-    router.push(safeNextPath || '/');
+    const redirectPath = result?.url || resolvePostLoginRedirect();
+    if (typeof window !== 'undefined') {
+      window.location.assign(redirectPath);
+      return;
+    }
+
+    router.replace(redirectPath);
+    router.refresh();
   };
 
   const handleForgotRequest = (event: React.FormEvent) => {
@@ -123,20 +208,25 @@ export default function LoginPage() {
   };
 
   const openFingerprintModal = (prefillEmail?: string) => {
-    setFingerprintPressed(true);
-    setTimeout(() => {
-      setFingerprintPressed(false);
-      setFingerprintEmail(prefillEmail?.trim() || '');
-      setFingerprintPassword('');
-      setFingerprintStatus(null);
-      setFingerprintOpen(true);
-    }, 180);
+    setFingerprintEmail(prefillEmail?.trim() || '');
+    setFingerprintPassword('');
+    setFingerprintStatus(null);
+    setFingerprintOpen(true);
   };
 
   const handleFingerprintLogin = async () => {
-    const savedEmail =
-      (typeof window !== 'undefined' && window.localStorage.getItem(LAST_FINGERPRINT_EMAIL_KEY)?.trim()) || '';
+    if (switchMode && !switchHandled) {
+      setSwitchHandled(true);
+    }
+
+    const { key: savedEmailKey, email: savedEmail } = getStoredFingerprintEmail(expectedRole);
     const loginEmail = email.trim() || lastFingerprintEmail.trim() || savedEmail;
+
+    if (expectedRole && !loginEmail) {
+      setFingerprintLoginStatus({ type: 'error', message: `${expectedRole} email required for fingerprint setup` });
+      openFingerprintModal();
+      return;
+    }
 
     setFingerprintLoginLoading(true);
     setFingerprintLoginStatus(null);
@@ -147,7 +237,7 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(loginEmail ? { email: loginEmail } : {}),
+        body: JSON.stringify(loginEmail ? { email: loginEmail, expectedRole } : { expectedRole }),
       });
 
       const startData = await startResponse.json().catch(() => null);
@@ -158,7 +248,19 @@ export default function LoginPage() {
           return;
         }
 
-        setFingerprintLoginStatus({ type: 'error', message: loginEmail ? 'wrong email & password' : 'No saved passkey found' });
+        if (startData?.code === 'ROLE_MISMATCH' && expectedRole) {
+          setFingerprintLoginStatus({ type: 'error', message: `${expectedRole} fingerprint required` });
+          openFingerprintModal(loginEmail || savedEmail);
+          return;
+        }
+
+        if (!loginEmail) {
+          setFingerprintLoginStatus({ type: 'error', message: 'No saved passkey found' });
+          openFingerprintModal();
+          return;
+        }
+
+        setFingerprintLoginStatus({ type: 'error', message: 'wrong email & password' });
         return;
       }
 
@@ -169,7 +271,11 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(loginEmail ? { email: loginEmail, response: assertionResponse } : { response: assertionResponse }),
+        body: JSON.stringify(
+          loginEmail
+            ? { email: loginEmail, response: assertionResponse, expectedRole }
+            : { response: assertionResponse, expectedRole },
+        ),
       });
 
       const finishData = await finishResponse.json().catch(() => null);
@@ -178,9 +284,16 @@ export default function LoginPage() {
         if (finishData?.code === 'NOT_ENROLLED' || finishData?.message?.includes('not setup')) {
           setLastFingerprintEmail('');
           if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(LAST_FINGERPRINT_EMAIL_KEY);
+            for (const key of fingerprintEmailKeysForLookup(expectedRole)) {
+              window.localStorage.removeItem(key);
+            }
           }
           openFingerprintModal();
+          return;
+        }
+        if (finishData?.code === 'ROLE_MISMATCH' && expectedRole) {
+          setFingerprintLoginStatus({ type: 'error', message: `${expectedRole} fingerprint required` });
+          openFingerprintModal(loginEmail || savedEmail);
           return;
         }
         setFingerprintLoginStatus({ type: 'error', message: 'Fingerprint login failed. Try again or add new fingerprint' });
@@ -190,7 +303,7 @@ export default function LoginPage() {
       const result = await signIn('fingerprint', {
         token: finishData.token,
         redirect: false,
-        callbackUrl: safeNextPath || '/',
+        callbackUrl: resolvePostLoginRedirect(),
       });
 
       if (result?.error || !result?.ok) {
@@ -206,34 +319,26 @@ export default function LoginPage() {
       }
 
       const normalizedSessionEmail = syncedSession.user?.email?.trim() || loginEmail;
+      const sessionRole = syncedSession.user?.role as string | undefined;
+      const redirectPath = resolvePostLoginRedirect(sessionRole);
 
       setLastFingerprintEmail(normalizedSessionEmail);
       setEmail((prev) => (prev.trim() ? prev : normalizedSessionEmail));
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(LAST_FINGERPRINT_EMAIL_KEY, normalizedSessionEmail);
+        window.localStorage.setItem(fingerprintEmailKey, normalizedSessionEmail);
+        if (savedEmailKey && savedEmailKey !== fingerprintEmailKey) {
+          window.localStorage.removeItem(savedEmailKey);
+        }
       }
 
       setFingerprintLoginStatus({ type: 'success', message: 'Fingerprint login success' });
 
-      if (result.url && typeof window !== 'undefined') {
-        try {
-          const redirectUrl = new URL(result.url, window.location.origin);
-          const sameHostPath = `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`;
-          window.location.assign(sameHostPath || '/');
-          return;
-        } catch {
-          window.location.assign(safeNextPath || '/');
-          return;
-        }
-
-      }
-
       if (typeof window !== 'undefined') {
-        window.location.assign(safeNextPath || '/');
+        window.location.assign(redirectPath);
         return;
       }
 
-      router.replace(safeNextPath || '/');
+      router.replace(redirectPath);
       router.refresh();
     } catch {
       setFingerprintLoginStatus({ type: 'error', message: 'Fingerprint login canceled' });
@@ -243,12 +348,18 @@ export default function LoginPage() {
   };
 
   const handleClearFingerprint = async () => {
-    const savedEmail =
-      (typeof window !== 'undefined' && window.localStorage.getItem(LAST_FINGERPRINT_EMAIL_KEY)?.trim()) || '';
+    const { email: savedEmail } = getStoredFingerprintEmail(expectedRole);
     const clearEmail = email.trim() || lastFingerprintEmail.trim() || savedEmail;
 
+    if (typeof window !== 'undefined') {
+      for (const key of fingerprintEmailKeysForLookup(expectedRole)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+    setLastFingerprintEmail('');
+
     if (!clearEmail) {
-      setClearFingerprintStatus({ type: 'error', message: 'No saved fingerprint' });
+      setClearFingerprintStatus({ type: 'success', message: 'Local fingerprint cache cleared' });
       return;
     }
 
@@ -261,7 +372,7 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: clearEmail }),
+        body: JSON.stringify({ email: clearEmail, expectedRole }),
       });
 
       const data = await response.json().catch(() => null);
@@ -269,9 +380,6 @@ export default function LoginPage() {
       if (response.ok && data?.success) {
         setLastFingerprintEmail('');
         setEmail('');
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(LAST_FINGERPRINT_EMAIL_KEY);
-        }
         setClearFingerprintStatus({ type: 'success', message: 'Fingerprint cleared. Add new fingerprint to sign in' });
       } else {
         setClearFingerprintStatus({ type: 'error', message: 'Failed to clear fingerprint' });
@@ -297,6 +405,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: fingerprintEmail,
           password: fingerprintPassword,
+          expectedRole,
         }),
       });
 
@@ -317,6 +426,7 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: fingerprintEmail,
           response: registrationResponse,
+          expectedRole,
         }),
       });
 
@@ -326,7 +436,7 @@ export default function LoginPage() {
         const savedEmail = fingerprintEmail.trim();
         setLastFingerprintEmail(savedEmail);
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(LAST_FINGERPRINT_EMAIL_KEY, savedEmail);
+          window.localStorage.setItem(fingerprintEmailKey, savedEmail);
         }
         showFingerprintStatus('success', 'success');
       } else {
@@ -368,7 +478,7 @@ export default function LoginPage() {
             type="button"
             onClick={handleFingerprintLogin}
             disabled={fingerprintLoginLoading}
-            className={`group relative flex h-14 w-14 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-600 transition duration-200 active:scale-[0.96] sm:h-16 sm:w-16 disabled:cursor-not-allowed disabled:opacity-70 ${fingerprintPressed ? 'animate-[finger-shake_180ms_ease-in-out]' : ''}`}
+            className="group relative flex h-14 w-14 items-center justify-center rounded-xl border border-transparent bg-transparent text-slate-600 transition duration-200 active:scale-[0.96] sm:h-16 sm:w-16 disabled:cursor-not-allowed disabled:opacity-70"
             aria-label="Open fingerprint sign in"
           >
             <span className="pointer-events-none absolute left-1.5 top-1.5 h-3 w-3 border-l-[2.5px] border-t-[2.5px] border-slate-500" />
@@ -604,15 +714,6 @@ export default function LoginPage() {
         ) : null}
       </div>
 
-      <style jsx global>{`
-        @keyframes finger-shake {
-          0% { transform: translateX(0); }
-          25% { transform: translateX(-3px); }
-          50% { transform: translateX(3px); }
-          75% { transform: translateX(-2px); }
-          100% { transform: translateX(0); }
-        }
-      `}</style>
     </main>
   );
 }

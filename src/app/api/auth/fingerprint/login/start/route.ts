@@ -10,6 +10,7 @@ import {
 
 const requestSchema = z.object({
   email: z.string().trim().email().optional(),
+  expectedRole: z.enum(['ADMIN', 'SELLER']).optional(),
 });
 
 export async function POST(request: Request) {
@@ -21,9 +22,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'wrong email & password' }, { status: 400 });
     }
 
-    const { email } = parsed.data;
+    const { email, expectedRole } = parsed.data;
 
     if (!email) {
+      if (expectedRole) {
+        return NextResponse.json(
+          { success: false, code: 'EMAIL_REQUIRED', message: `${expectedRole} email required` },
+          { status: 400 }
+        );
+      }
+
       const options = await generateAuthenticationOptions({
         rpID: getWebAuthnRpID(),
         timeout: 60_000,
@@ -36,7 +44,7 @@ export async function POST(request: Request) {
         challenge: options.challenge,
       });
 
-      return NextResponse.json({ success: true, options, discoverable: true });
+      return NextResponse.json({ success: true, options, discoverable: true, expectedRole: expectedRole || null });
     }
 
     const user = await prisma.user.findUnique({
@@ -56,6 +64,10 @@ export async function POST(request: Request) {
 
     if (!user || user.status !== 'ACTIVE' || !isAllowedFingerprintRole(user.role)) {
       return NextResponse.json({ success: false, message: 'wrong email & password' }, { status: 401 });
+    }
+
+    if (expectedRole && user.role !== expectedRole) {
+      return NextResponse.json({ success: false, code: 'ROLE_MISMATCH', message: `${expectedRole} account required` }, { status: 403 });
     }
 
     if (user.webauthnCredentials.length === 0) {

@@ -1,4 +1,4 @@
-import { NextAuthOptions } from 'next-auth';
+import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
@@ -40,11 +40,18 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        expectedRole: { label: 'Expected Role', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
+
+        const expectedRoleRaw = credentials.expectedRole;
+        const expectedRole =
+          expectedRoleRaw === 'ADMIN' || expectedRoleRaw === 'SELLER'
+            ? expectedRoleRaw
+            : null;
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
@@ -57,6 +64,10 @@ export const authOptions: NextAuthOptions = {
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
 
         if (!isValid) {
+          return null;
+        }
+
+        if (expectedRole && user.role !== expectedRole) {
           return null;
         }
 
@@ -79,12 +90,25 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
       }
+
+      if (!token.role && typeof token.email === 'string' && token.email) {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: token.email },
+          select: { id: true, role: true },
+        });
+
+        if (dbUser) {
+          token.id = token.id || dbUser.id;
+          token.role = dbUser.role;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as string;
+        session.user.role = (token.role as string) || session.user.role;
       }
       return session;
     },
@@ -94,8 +118,8 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 5 * 60,
-    updateAge: 0,
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
   secret: process.env.NEXTAUTH_SECRET || 'luxo-dev-secret',
 };
