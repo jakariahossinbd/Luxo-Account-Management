@@ -245,20 +245,21 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-[20px] font-bold tracking-tight text-orange-500 sm:text-[24px]">SELLER ATTENDANCE</h2>
+      <section className="rounded-[18px] border border-slate-200 bg-white px-4 pb-4 pt-2.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)] sm:px-5 sm:pb-5">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+          <h2 className="text-[19px] font-semibold uppercase tracking-tight text-orange-500 sm:text-[22px]">SELLER ATTENDANCE</h2>
           <button
             ref={dateToggleRef}
             type="button"
             onClick={() => setIsDatePanelOpen((prev) => !prev)}
-            className="text-[16px] font-semibold text-slate-700"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[15px] font-normal text-slate-700"
           >
-            {dateRangeButtonLabel} ▼
+            {dateRangeButtonLabel}
+            <span className="text-xs">▼</span>
           </button>
         </div>
 
-        <div className="relative mt-2">
+        <div className="relative mt-3">
           {isDatePanelOpen && (
             <div ref={datePanelRef} className="absolute left-0 top-0 z-20 w-full rounded-[16px] border border-slate-200 bg-white p-3 shadow-2xl">
               <div className="mb-2 flex items-center justify-between">
@@ -374,23 +375,23 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4">
-          <div className="flex min-h-[118px] flex-col items-center justify-center rounded-[14px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-3 text-center sm:min-h-[156px] sm:p-4">
-            <p className="text-[14px] font-semibold text-slate-700 sm:text-[18px]">Today&apos;s Earnings</p>
-            <p className="mt-2 text-[26px] font-bold text-orange-600 sm:text-[44px]">৳{formattedTodaysEarning} Tk</p>
-            <p className="mt-1 text-[12px] font-medium text-slate-400 sm:text-[16px]">
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3">
+          <div className="flex min-h-[84px] flex-col items-center justify-center rounded-[10px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-2 py-1.5 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:min-h-[104px] sm:px-2.5 sm:py-2">
+            <p className="text-[12px] font-semibold text-slate-700 sm:text-[15px]">Today&apos;s Earnings</p>
+            <p className="mt-1.5 text-[24px] font-bold text-orange-600 sm:text-[48px]">৳{formattedTodaysEarning} Tk</p>
+            <p className="mt-1 text-[11px] font-medium text-slate-400 sm:text-[14px]">
               {currentDate.toLocaleDateString('en-BD', { month: 'long', day: '2-digit', year: 'numeric' })}
             </p>
           </div>
 
-          <div className="flex min-h-[118px] flex-col items-center justify-center rounded-[14px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-3 text-center sm:min-h-[156px] sm:p-4">
-            <p className="text-[14px] font-semibold text-slate-700 sm:text-[18px]">Monthly Salary</p>
-            <p className="mt-2 text-[26px] font-bold text-green-600 sm:text-[44px]">৳{formattedMonthlySalary} Tk</p>
-            <p className="mt-1 text-[12px] font-medium text-slate-400 sm:text-[16px]">{monthNames[selectedMonth]} - {selectedYear}</p>
+          <div className="flex min-h-[84px] flex-col items-center justify-center rounded-[10px] border border-slate-200 bg-gradient-to-b from-white to-slate-50 px-2 py-1.5 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:min-h-[104px] sm:px-2.5 sm:py-2">
+            <p className="text-[12px] font-semibold text-slate-700 sm:text-[15px]">Monthly Salary</p>
+            <p className="mt-1.5 text-[24px] font-bold text-green-600 sm:text-[48px]">৳{formattedMonthlySalary} Tk</p>
+            <p className="mt-1 text-[11px] font-medium text-slate-400 sm:text-[14px]">{monthNames[selectedMonth]} - {selectedYear}</p>
           </div>
         </div>
 
-        <div className="mt-4 rounded-[14px] border border-slate-200 bg-white">
+        <div className="mt-4 rounded-[10px] border border-slate-200 bg-white">
           <div className="grid grid-cols-4">
             <div className="border-r border-slate-200 p-2 text-center sm:p-3">
               <p className="text-[10px] font-semibold text-slate-500 sm:text-[16px]">Total Presents</p>
@@ -418,7 +419,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
 
       <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
         <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             <button
               type="button"
               onClick={() => {
@@ -426,7 +427,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
                 router.push('/seller/attendance/clock-in');
               }}
               disabled={isClockingIn || currentStatus === 'CHECKED_IN'}
-              className={`inline-flex items-center justify-center gap-3 rounded-[16px] px-5 py-5 text-center text-[20px] font-bold text-white transition ${currentStatus === 'CHECKED_IN' ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#18a44b] to-[#2cbf5d] hover:brightness-95'}`}
+              className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold text-white transition ${currentStatus === 'CHECKED_IN' ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#18a44b] to-[#2cbf5d] hover:brightness-95'}`}
             >
               <Clock className="h-7 w-7" />
               {isClockingIn ? 'OPENING...' : 'CLOCK IN'}
@@ -439,7 +440,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
                 router.push('/seller/attendance/clock-out');
               }}
               disabled={isClockingOut || currentStatus === 'CHECKED_OUT'}
-              className={`inline-flex items-center justify-center gap-3 rounded-[16px] px-5 py-5 text-center text-[20px] font-bold transition ${currentStatus === 'CHECKED_OUT' ? 'cursor-not-allowed bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-[#e2241f] to-[#f03b38] text-white hover:brightness-95'}`}
+              className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold transition ${currentStatus === 'CHECKED_OUT' ? 'cursor-not-allowed bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-[#e2241f] to-[#f03b38] text-white hover:brightness-95'}`}
             >
               <LogOut className="h-7 w-7" />
               {isClockingOut ? 'OPENING...' : 'CLOCK OUT'}
