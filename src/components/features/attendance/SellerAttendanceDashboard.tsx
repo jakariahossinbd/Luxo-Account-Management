@@ -417,51 +417,48 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
         </div>
       </section>
 
-      <section className="rounded-[10px] border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-6">
-        <div className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-          <div className="grid gap-4">
-            <button
-              type="button"
-              onClick={() => {
-                setIsClockingIn(true);
-                router.push('/seller/attendance/clock-in');
-              }}
-              disabled={isClockingIn || currentStatus === 'CHECKED_IN'}
-              className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold text-white transition ${currentStatus === 'CHECKED_IN' ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#18a44b] to-[#2cbf5d] hover:brightness-95'}`}
-            >
-              <Clock className="h-7 w-7" />
-              {isClockingIn ? 'OPENING...' : 'CLOCK IN'}
-            </button>
+      <section className="rounded-[18px] border border-slate-200 bg-white px-4 pb-4 pt-2.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)] sm:px-5 sm:pb-5">
+        <div className="grid gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setIsClockingIn(true);
+              router.push('/seller/attendance/clock-in');
+            }}
+            disabled={isClockingIn || currentStatus === 'CHECKED_IN'}
+            className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold text-white transition ${currentStatus === 'CHECKED_IN' ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#18a44b] to-[#2cbf5d] hover:brightness-95'}`}
+          >
+            <Clock className="h-7 w-7" />
+            {isClockingIn ? 'OPENING...' : 'CLOCK IN'}
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsClockingOut(true);
-                router.push('/seller/attendance/clock-out');
-              }}
-              disabled={isClockingOut || currentStatus === 'CHECKED_OUT'}
-              className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold transition ${currentStatus === 'CHECKED_OUT' ? 'cursor-not-allowed bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-[#e2241f] to-[#f03b38] text-white hover:brightness-95'}`}
-            >
-              <LogOut className="h-7 w-7" />
-              {isClockingOut ? 'OPENING...' : 'CLOCK OUT'}
-            </button>
-          </div>
-
-          <p className="mt-4 text-center text-[24px] font-medium text-slate-800">
-            {currentDayLabel} | {currentTimeLabel}
-          </p>
-          {currentCheckInTime ? (
-            <p className="mt-1 text-center text-sm text-slate-500">Checked in at {currentCheckInTime}</p>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setIsClockingOut(true);
+              router.push('/seller/attendance/clock-out');
+            }}
+            disabled={isClockingOut || currentStatus === 'CHECKED_OUT'}
+            className={`inline-flex items-center justify-center gap-3 rounded-[10px] px-4 py-3 text-center text-[20px] font-bold transition ${currentStatus === 'CHECKED_OUT' ? 'cursor-not-allowed bg-slate-100 text-slate-300' : 'bg-gradient-to-r from-[#e2241f] to-[#f03b38] text-white hover:brightness-95'}`}
+          >
+            <LogOut className="h-7 w-7" />
+            {isClockingOut ? 'OPENING...' : 'CLOCK OUT'}
+          </button>
         </div>
+
+        <p className="mt-2.5 text-center text-[16px] font-medium text-slate-800 sm:text-[18px]">
+          {currentDayLabel} | {currentTimeLabel}
+        </p>
+        {currentCheckInTime ? (
+          <p className="mt-1 text-center text-sm text-slate-500">Checked in at {currentCheckInTime}</p>
+        ) : null}
 
         {loading ? <p className="mt-3 text-xs text-slate-400">Loading attendance data...</p> : null}
       </section>
 
-      <section className="rounded-[10px] border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
-        <h2 className="text-[18px] font-bold sm:text-[22px]">
-          <span className="text-orange-500">Monthly </span>
-          <span className="text-slate-900">Attendance Calendar</span>
+      <section className="rounded-[18px] border border-slate-200 bg-white px-4 pb-4 pt-2.5 shadow-[0_8px_26px_rgba(15,23,42,0.06)] sm:px-5 sm:pb-5">
+        <h2 className="text-center text-[19px] font-semibold uppercase tracking-tight text-orange-500 sm:text-[22px]">
+          Monthly Attendance Calendar
         </h2>
 
         <div className="mt-4 flex items-center justify-between gap-3">
@@ -480,7 +477,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
             <ChevronLeft className="h-5 w-5" />
           </button>
 
-          <h3 className="text-[18px] font-bold text-slate-900 sm:text-[20px]">
+          <h3 className="text-center text-[19px] font-semibold text-slate-900 sm:text-[22px]">
             {monthNames[selectedMonth]} {selectedYear}
           </h3>
 
