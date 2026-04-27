@@ -44,8 +44,13 @@ export function WalletsSection() {
 
     loadWallets();
 
+    const intervalId = window.setInterval(() => {
+      void loadWallets();
+    }, 10000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
   }, []);
 

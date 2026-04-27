@@ -522,7 +522,9 @@ function toDayBounds(range: { start: Date; end: Date } | null) {
 }
 
 function generateSalesOrderId() {
-  return `KDJ${Math.floor(500 + Math.random() * 499)}`;
+  const timestampPart = Date.now().toString(36).toUpperCase();
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `KDJ-${timestampPart}-${randomPart}`;
 }
 
 function parseAmount(value: string) {
@@ -597,7 +599,14 @@ function normalizePersistedStatus(value: unknown): SalesOrderStatus | null {
   if (normalized === 'processing' || normalized === 'confirmed') {
     return 'processing';
   }
-  if (normalized === 'delivery' || normalized === 'done' || normalized === 'completed' || normalized === 'delivered') {
+  if (
+    normalized === 'delivery' ||
+    normalized === 'done' ||
+    normalized === 'completed' ||
+    normalized === 'delivered' ||
+    normalized === 'complete delivery' ||
+    normalized.replace(/[\s_-]+/g, '') === 'completedelivery'
+  ) {
     return 'delivery';
   }
   if (normalized === 'canceled' || normalized === 'cancelled' || normalized === 'cancel') {
@@ -680,6 +689,28 @@ function parsePersistedOrders(rawValue: string | null, fallback: SalesOrder[]) {
   } catch {
     return fallback;
   }
+}
+
+function mergePersistedOrders(serverRows: SalesOrder[], cachedRows: SalesOrder[]) {
+  const serverOrderIds = new Set(serverRows.map((row) => row.orderId));
+  const mergedByOrderId = new Map<string, SalesOrder>();
+
+  for (const cachedRow of cachedRows) {
+    mergedByOrderId.set(cachedRow.orderId, cachedRow);
+  }
+
+  for (const serverRow of serverRows) {
+    const cachedRow = mergedByOrderId.get(serverRow.orderId);
+    mergedByOrderId.set(serverRow.orderId, {
+      ...(cachedRow || serverRow),
+      ...serverRow,
+      ...(cachedRow?.sampleImageUrl ? { sampleImageUrl: cachedRow.sampleImageUrl } : {}),
+    });
+  }
+
+  return [...serverRows, ...cachedRows.filter((cachedRow) => !serverOrderIds.has(cachedRow.orderId))].map(
+    (row) => mergedByOrderId.get(row.orderId) || row
+  );
 }
 
 function replaceOrderByMatch(prev: SalesOrder[], sourceOrder: SalesOrder, nextOrder: SalesOrder) {
@@ -769,6 +800,13 @@ function mergeIndicatorStates(previousRows: SalesOrder[], incomingRows: SalesOrd
   });
 }
 
+function persistSellerOrders(salesOrders: SalesOrder[], ledsOrders: SalesOrder[]) {
+  if (typeof window === 'undefined') return;
+
+  window.localStorage.setItem(SALES_ORDERS_STORAGE_KEY, JSON.stringify(salesOrders));
+  window.localStorage.setItem(LEDS_ORDERS_STORAGE_KEY, JSON.stringify(ledsOrders));
+}
+
 export default function SellerDashboardHome() {
   const { t } = useTranslation();
   const { success, warning } = useToast();
@@ -822,6 +860,7 @@ export default function SellerDashboardHome() {
   const [ordersSyncState, setOrdersSyncState] = useState<OrdersSyncState>('loading');
   const [indicatorRefreshLoading, setIndicatorRefreshLoading] = useState(false);
   const [lastIndicatorRefreshAt, setLastIndicatorRefreshAt] = useState<number | null>(null);
+  const createSalesScrollTopRef = useRef(0);
   const stockNotes = useCommunicationStore((state) => state.stockNotes);
   const upsertStockNote = useCommunicationStore((state) => state.upsertStockNote);
   const clearStockNote = useCommunicationStore((state) => state.clearStockNote);
@@ -856,7 +895,6 @@ export default function SellerDashboardHome() {
   const orderListDatePanelRef = useRef<HTMLDivElement>(null);
   const salesLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const createSalesScrollPositionRef = useRef(0);
   const lastSyncedOrdersSnapshotRef = useRef<string | null>(null);
   const syncIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ordersSyncRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1068,7 +1106,11 @@ export default function SellerDashboardHome() {
     }
 
     const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(nextUrl, { scroll: false });
+    const currentUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+
+    if (nextUrl !== currentUrl) {
+      router.replace(nextUrl, { scroll: false });
+    }
   }, [
     activeView,
     dashboardCustomEndDay,
@@ -1113,7 +1155,7 @@ export default function SellerDashboardHome() {
     }
 
     try {
-      const response = await fetch('/api/seller/orders', { cache: 'no-store' });
+        const response = await fetch('/api/seller/orders', { cache: 'no-store', credentials: 'include' });
       const payload = (await response.json()) as SellerOrdersResponse;
 
       if (!response.ok || !payload?.success) {
@@ -1157,7 +1199,7 @@ export default function SellerDashboardHome() {
           window.localStorage.setItem(ORDERS_CLEANUP_KEY, 'done');
         }
 
-        const response = await fetch('/api/seller/orders', { cache: 'no-store' });
+        const response = await fetch('/api/seller/orders', { cache: 'no-store', credentials: 'include' });
         if (!response.ok) {
           return;
         }
@@ -1171,21 +1213,14 @@ export default function SellerDashboardHome() {
         const serverLeds = Array.isArray(payload.data?.ledsOrders) ? payload.data?.ledsOrders : [];
         const cachedSales = parsePersistedOrders(window.localStorage.getItem(SALES_ORDERS_STORAGE_KEY), []);
         const cachedLeds = parsePersistedOrders(window.localStorage.getItem(LEDS_ORDERS_STORAGE_KEY), []);
-        const hasServerRows = serverSales.length > 0 || serverLeds.length > 0;
-        const hasCachedRows = cachedSales.length > 0 || cachedLeds.length > 0;
+        const mergedSales = mergePersistedOrders(serverSales as SalesOrder[], cachedSales as SalesOrder[]);
+        const mergedLeds = mergePersistedOrders(serverLeds as SalesOrder[], cachedLeds as SalesOrder[]);
 
         if (cancelled) return;
 
-        if (hasServerRows || !hasCachedRows) {
-          setSalesOrders(serverSales as SalesOrder[]);
-          setLedsOrders(serverLeds as SalesOrder[]);
-          lastSyncedOrdersSnapshotRef.current = JSON.stringify({ salesOrders: serverSales, ledsOrders: serverLeds });
-        } else {
-          // Cached rows exist but server has none yet, so keep snapshot unsynced to trigger upload.
-          setSalesOrders(cachedSales as SalesOrder[]);
-          setLedsOrders(cachedLeds as SalesOrder[]);
-          lastSyncedOrdersSnapshotRef.current = null;
-        }
+        setSalesOrders(mergedSales as SalesOrder[]);
+        setLedsOrders(mergedLeds as SalesOrder[]);
+        lastSyncedOrdersSnapshotRef.current = JSON.stringify({ salesOrders: serverSales, ledsOrders: serverLeds });
       } catch {
         if (!cancelled) {
           const persistedSalesOrders = parsePersistedOrders(window.localStorage.getItem(SALES_ORDERS_STORAGE_KEY), fallbackSalesOrders);
@@ -1218,15 +1253,26 @@ export default function SellerDashboardHome() {
     window.localStorage.setItem(LEDS_ORDERS_STORAGE_KEY, JSON.stringify(ledsOrders));
   }, [hasHydratedOrders, ledsOrders]);
 
-  useEffect(() => {
-    if (!hasHydratedOrders) return;
+  const pushSellerOrdersToServer = async (nextSalesOrders: SalesOrder[], nextLedsOrders: SalesOrder[]) => {
+    try {
+      const response = await fetch('/api/seller/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ salesOrders: nextSalesOrders, ledsOrders: nextLedsOrders }),
+      });
 
-    const intervalId = setInterval(() => {
-      void refreshDeliveryIndicators(true);
-    }, 45_000);
+      if (response.ok) {
+        lastSyncedOrdersSnapshotRef.current = JSON.stringify({ salesOrders: nextSalesOrders, ledsOrders: nextLedsOrders });
+        updateOrdersSyncState('saved');
+        return true;
+      }
 
-    return () => clearInterval(intervalId);
-  }, [hasHydratedOrders, refreshDeliveryIndicators]);
+      return false;
+    } catch {
+      return false;
+    }
+  };
 
   useEffect(() => {
     if (!hasHydratedOrders) return;
@@ -1253,6 +1299,7 @@ export default function SellerDashboardHome() {
         const response = await fetch('/api/seller/orders', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ salesOrders, ledsOrders }),
         });
 
@@ -1971,7 +2018,7 @@ export default function SellerDashboardHome() {
 
   const handleCreateSalesOrder = (source: OrderFlowType = 'sales') => {
     if (typeof window !== 'undefined') {
-      createSalesScrollPositionRef.current = window.scrollY;
+      createSalesScrollTopRef.current = window.scrollY;
     }
 
     setCreateSalesForm({
@@ -1998,15 +2045,17 @@ export default function SellerDashboardHome() {
   };
 
   const handleCloseCreateSalesModal = () => {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     setEditingSalesOrder(null);
     setIsStatusDropdownOpen(false);
     setIsCreateSalesModalOpen(false);
 
     if (typeof window !== 'undefined') {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: createSalesScrollPositionRef.current, behavior: 'auto' });
-        });
+        window.scrollTo({ top: createSalesScrollTopRef.current, behavior: 'auto' });
       });
     }
   };
@@ -2068,9 +2117,17 @@ export default function SellerDashboardHome() {
     };
 
     if (source === 'leds') {
-      setLedsOrders(removeOrder);
+      setLedsOrders((prev) => {
+        const next = removeOrder(prev);
+        persistSellerOrders(salesOrders, next);
+        return next;
+      });
     } else {
-      setSalesOrders(removeOrder);
+      setSalesOrders((prev) => {
+        const next = removeOrder(prev);
+        persistSellerOrders(next, ledsOrders);
+        return next;
+      });
     }
     setActiveSalesActionRow(null);
     setHoldingSalesRow(null);
@@ -2170,8 +2227,6 @@ export default function SellerDashboardHome() {
   const handleSubmitCreateSales = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const scrollTopBeforeSubmit = typeof window !== 'undefined' ? window.scrollY : 0;
-
     const customerName = createSalesForm.customerName.trim();
     const contactValue = createSalesForm.contactValue.trim();
 
@@ -2179,7 +2234,13 @@ export default function SellerDashboardHome() {
       return;
     }
 
-    const orderId = createSalesForm.orderId.trim() || generateSalesOrderId();
+    let orderId = createSalesForm.orderId.trim() || generateSalesOrderId();
+    if (!editingSalesOrder) {
+      const existingIds = new Set([...salesOrders, ...ledsOrders].map((item) => item.orderId));
+      while (existingIds.has(orderId)) {
+        orderId = generateSalesOrderId();
+      }
+    }
     const previousStatus = editingSalesOrder?.status;
 
     const selectedStatus = createSalesForm.status;
@@ -2204,61 +2265,40 @@ export default function SellerDashboardHome() {
     };
 
     const targetFlowType: OrderFlowType = selectedStatus === 'customer-leds' ? 'leds' : 'sales';
+    let nextSalesOrders = salesOrders;
+    let nextLedsOrders = ledsOrders;
 
     if (editingSalesOrder) {
       if (orderFlowType === targetFlowType) {
         if (targetFlowType === 'leds') {
-          setLedsOrders((prev) => {
-            const replaced = replaceOrderByMatch(prev, editingSalesOrder, savedOrder);
-            return replaced === prev ? upsertOrderById(prev, savedOrder) : replaced;
-          });
+          const replaced = replaceOrderByMatch(nextLedsOrders, editingSalesOrder, savedOrder);
+          nextLedsOrders = replaced === nextLedsOrders ? upsertOrderById(nextLedsOrders, savedOrder) : replaced;
         } else {
-          setSalesOrders((prev) => {
-            const replaced = replaceOrderByMatch(prev, editingSalesOrder, savedOrder);
-            return replaced === prev ? upsertOrderById(prev, savedOrder) : replaced;
-          });
+          const replaced = replaceOrderByMatch(nextSalesOrders, editingSalesOrder, savedOrder);
+          nextSalesOrders = replaced === nextSalesOrders ? upsertOrderById(nextSalesOrders, savedOrder) : replaced;
         }
+      } else if (orderFlowType === 'leds') {
+        nextLedsOrders = removeOrderByMatch(nextLedsOrders, editingSalesOrder);
+        nextSalesOrders = upsertOrderById(nextSalesOrders, savedOrder);
       } else {
-        if (orderFlowType === 'leds') {
-          setLedsOrders((prev) => removeOrderByMatch(prev, editingSalesOrder));
-          setSalesOrders((prev) => upsertOrderById(prev, savedOrder));
-          setActiveView('create-sales');
-        } else {
-          setSalesOrders((prev) => removeOrderByMatch(prev, editingSalesOrder));
-          setLedsOrders((prev) => upsertOrderById(prev, savedOrder));
-        }
+        nextSalesOrders = removeOrderByMatch(nextSalesOrders, editingSalesOrder);
+        nextLedsOrders = upsertOrderById(nextLedsOrders, savedOrder);
       }
     } else if (targetFlowType === 'leds') {
-      setLedsOrders((prev) => upsertOrderById(prev, savedOrder));
-      setActiveView('customer-leds');
+      nextLedsOrders = upsertOrderById(nextLedsOrders, savedOrder);
     } else {
-      setSalesOrders((prev) => upsertOrderById(prev, savedOrder));
-      if (orderFlowType === 'leds') {
-        setActiveView('create-sales');
-      }
+      nextSalesOrders = upsertOrderById(nextSalesOrders, savedOrder);
     }
 
-    // Clear active filter so the newly created/updated row is visible immediately.
-    if (targetFlowType === 'leds') {
-      setLedsSearchTerm('');
-      setLedsStatusFilter('all');
-    } else {
-      setSalesSearchTerm('');
-      setSalesStatusFilter('all');
-    }
+    setSalesOrders(nextSalesOrders);
+    setLedsOrders(nextLedsOrders);
+    persistSellerOrders(nextSalesOrders, nextLedsOrders);
+    void pushSellerOrdersToServer(nextSalesOrders, nextLedsOrders);
 
     if (previousStatus && previousStatus !== selectedStatus) {
       success(`Moved to ${salesStatusLabel[selectedStatus]}.`, 'Status updated');
     }
     handleCloseCreateSalesModal();
-
-    if (typeof window !== 'undefined') {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollTopBeforeSubmit, behavior: 'auto' });
-        });
-      });
-    }
   };
 
   return (
@@ -2281,7 +2321,10 @@ export default function SellerDashboardHome() {
         }}
       />
 
-      <main className="desktop-content-shell mx-auto w-full max-w-[1400px] px-3 pb-28 pt-[88px] transition-colors duration-300 lg:mx-0 lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-none lg:px-5 lg:pt-[104px]">
+      <main
+        className="desktop-content-shell mx-auto w-full max-w-[1400px] px-3 pb-28 pt-[88px] transition-colors duration-300 lg:mx-0 lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-none lg:px-5 lg:pt-[104px]"
+        style={{ overflowAnchor: 'none' }}
+      >
         {dashboardView ? (
           <>
             <div ref={globalSearchContainerRef} className="relative mt-0 mb-2 rounded-full border border-orange-300 bg-white px-4 py-2 shadow-sm">
@@ -2621,16 +2664,18 @@ export default function SellerDashboardHome() {
                 </div>
               </div>
 
-              {!isCustomerLedsView && (ordersSyncState === 'syncing' || ordersSyncState === 'saved') ? (
-                <div className="mt-2 flex justify-end">
-                  <span
-                    className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold sm:text-[12px] ${ordersSyncState === 'syncing'
-                      ? 'border border-blue-200 bg-blue-50 text-blue-700'
-                      : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                    }`}
-                  >
-                    {ordersSyncState === 'syncing' ? 'Syncing orders...' : 'Orders saved'}
-                  </span>
+              {!isCustomerLedsView ? (
+                <div className="mt-2 flex min-h-[34px] justify-end">
+                  {ordersSyncState === 'syncing' || ordersSyncState === 'saved' ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold sm:text-[12px] ${ordersSyncState === 'syncing'
+                        ? 'border border-blue-200 bg-blue-50 text-blue-700'
+                        : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}
+                    >
+                      {ordersSyncState === 'syncing' ? 'Syncing orders...' : 'Orders saved'}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -3077,9 +3122,9 @@ export default function SellerDashboardHome() {
                       </button>
                       <button
                         type="submit"
-                        className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-2 text-[18px] font-normal text-white transition hover:bg-green-700"
+                        className="inline-flex min-w-[170px] items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-2 text-[14px] font-medium text-white transition hover:bg-green-700"
                       >
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[14px] font-normal leading-none">+</span>
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[12px] font-normal leading-none">+</span>
                         <span className="leading-none">{editingSalesOrder ? (orderFlowType === 'leds' ? 'Update Led' : 'Update Sale') : (orderFlowType === 'leds' ? 'Create Led' : 'Create Sale')}</span>
                       </button>
                     </div>

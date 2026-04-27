@@ -57,12 +57,12 @@ export default function ReportsPage() {
       setLoading(true);
       // For now, we'll aggregate data from different endpoints
       const [salesRes, purchaseRes, expenseRes, productRes, sellerRes, walletsRes] = await Promise.all([
-        fetch('/api/admin/sales?limit=1000'),
-        fetch('/api/admin/purchase?limit=1000'),
-        fetch('/api/admin/accounting?limit=1000'),
-        fetch('/api/admin/products?limit=1000'),
-        fetch('/api/admin/seller-manage?limit=1000'),
-        fetch('/api/admin/wallets'),
+        fetch('/api/admin/sales?limit=1000', { cache: 'no-store' }),
+        fetch('/api/admin/purchase?limit=1000', { cache: 'no-store' }),
+        fetch('/api/admin/accounting?limit=1000', { cache: 'no-store' }),
+        fetch('/api/admin/products?limit=1000', { cache: 'no-store' }),
+        fetch('/api/admin/seller-manage?limit=1000', { cache: 'no-store' }),
+        fetch('/api/admin/wallets', { cache: 'no-store' }),
       ]);
 
       const salesData: ApiListResponse<{ total: number }> = await salesRes.json();

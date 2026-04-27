@@ -33,6 +33,10 @@ interface PaginationData {
   };
 }
 
+interface FetchSalesOptions {
+  silent?: boolean;
+}
+
 export default function SalesPage() {
   const { t } = useTranslation();
   const { success, error: toastError, info } = useToast();
@@ -43,10 +47,13 @@ export default function SalesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
 
-  const fetchSales = useCallback(async (page = 1) => {
+  const fetchSales = useCallback(async (page = 1, options: FetchSalesOptions = {}) => {
+    const { silent = false } = options;
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
       const response = await fetch(`/api/admin/sales?page=${page}&limit=10`);
       if (!response.ok) throw new Error(t('messages.operationFailed'));
       const data: PaginationData = await response.json();
@@ -60,7 +67,9 @@ export default function SalesPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('messages.operationFailed'));
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [t]);
 
@@ -246,7 +255,7 @@ export default function SalesPage() {
         <CreateSaleModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          onCreated={() => fetchSales(1)}
+          onCreated={() => fetchSales(1, { silent: true })}
         />
 
         <SaleDetailsModal

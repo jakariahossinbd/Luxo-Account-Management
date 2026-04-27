@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { getToken } from 'next-auth/jwt';
 import { OrderStage } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { dispatchDeliveryIntegrations } from '@/lib/integrations/delivery';
+import type { NextRequest } from 'next/server';
 
 type SalesOrderStatus = 'pending' | 'processing' | 'delivery' | 'canceled' | 'customer-leds';
 type DeliveryIndicatorState = 'pending' | 'done' | 'deny';
@@ -59,11 +61,42 @@ type OrderMeta = {
   sampleImageName?: string;
 };
 
+type LegacyOrderMeta = {
+  source?: unknown;
+  d?: unknown;
+  ls?: unknown;
+  sm?: unknown;
+  cr?: unknown;
+  ct?: unknown;
+  vr?: unknown;
+  ps?: unknown;
+  ds?: unknown;
+  pd?: unknown;
+  st?: unknown;
+  dc?: unknown;
+  tt?: unknown;
+  im?: unknown;
+};
+
+function truncateText(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized;
+}
+
 function normalizeIndicatorState(value: unknown): DeliveryIndicatorState {
   return value === 'done' || value === 'deny' ? value : 'pending';
 }
 
-const sourceMarker = '"source":"seller-dashboard-orders"';
+const sourceMarker = 'seller-dashboard-orders';
+const authSecret = process.env.NEXTAUTH_SECRET || 'luxo-dev-secret';
 
 const stageByStatus: Record<SalesOrderStatus, OrderStage> = {
   'customer-leds': 'LEAD',
@@ -85,29 +118,108 @@ function parseOrderMeta(notes: string | null): OrderMeta {
   if (!notes) return { source: 'seller-dashboard-orders' };
 
   try {
-    const parsed = JSON.parse(notes) as Partial<OrderMeta>;
+    const parsed = JSON.parse(notes) as Partial<OrderMeta> & LegacyOrderMeta;
     if (parsed?.source !== 'seller-dashboard-orders') {
       return { source: 'seller-dashboard-orders' };
     }
     return {
       source: 'seller-dashboard-orders',
-      date: typeof parsed.date === 'string' ? parsed.date : undefined,
-      lastStatus: parseStatusOrUndefined(parsed.lastStatus),
-      smsState: normalizeIndicatorState(parsed.smsState),
-      courierState: normalizeIndicatorState(parsed.courierState),
-      contactType: parsed.contactType === 'mobile' || parsed.contactType === 'whatsapp' ? parsed.contactType : undefined,
-      villageRoad: typeof parsed.villageRoad === 'string' ? parsed.villageRoad : undefined,
-      policeStation: typeof parsed.policeStation === 'string' ? parsed.policeStation : undefined,
-      district: typeof parsed.district === 'string' ? parsed.district : undefined,
-      productsDetails: typeof parsed.productsDetails === 'string' ? parsed.productsDetails : undefined,
-      subTotal: typeof parsed.subTotal === 'string' ? parsed.subTotal : undefined,
-      discount: typeof parsed.discount === 'string' ? parsed.discount : undefined,
-      totalTaka: typeof parsed.totalTaka === 'string' ? parsed.totalTaka : undefined,
-      sampleImageName: typeof parsed.sampleImageName === 'string' ? parsed.sampleImageName : undefined,
+      date: typeof parsed.date === 'string' ? parsed.date : typeof parsed.d === 'string' ? parsed.d : undefined,
+      lastStatus: parseStatusOrUndefined(parsed.lastStatus ?? parsed.ls),
+      smsState: normalizeIndicatorState(parsed.smsState ?? parsed.sm),
+      courierState: normalizeIndicatorState(parsed.courierState ?? parsed.cr),
+      contactType:
+        parsed.contactType === 'mobile' || parsed.contactType === 'whatsapp'
+          ? parsed.contactType
+          : parsed.ct === 'mobile' || parsed.ct === 'whatsapp'
+          ? parsed.ct
+          : undefined,
+      villageRoad: typeof parsed.villageRoad === 'string' ? parsed.villageRoad : typeof parsed.vr === 'string' ? parsed.vr : undefined,
+      policeStation:
+        typeof parsed.policeStation === 'string' ? parsed.policeStation : typeof parsed.ps === 'string' ? parsed.ps : undefined,
+      district: typeof parsed.district === 'string' ? parsed.district : typeof parsed.ds === 'string' ? parsed.ds : undefined,
+      productsDetails:
+        typeof parsed.productsDetails === 'string' ? parsed.productsDetails : typeof parsed.pd === 'string' ? parsed.pd : undefined,
+      subTotal: typeof parsed.subTotal === 'string' ? parsed.subTotal : typeof parsed.st === 'string' ? parsed.st : undefined,
+      discount: typeof parsed.discount === 'string' ? parsed.discount : typeof parsed.dc === 'string' ? parsed.dc : undefined,
+      totalTaka: typeof parsed.totalTaka === 'string' ? parsed.totalTaka : typeof parsed.tt === 'string' ? parsed.tt : undefined,
+      sampleImageName:
+        typeof parsed.sampleImageName === 'string' ? parsed.sampleImageName : typeof parsed.im === 'string' ? parsed.im : undefined,
     };
   } catch {
     return { source: 'seller-dashboard-orders' };
   }
+}
+
+async function resolveSessionUserId(session: Awaited<ReturnType<typeof getServerSession>>) {
+  if (session?.user?.id) {
+    return session.user.id;
+  }
+
+  const email = session?.user?.email;
+  if (!email) {
+    return null;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  return user?.id ?? null;
+}
+
+async function resolveRequestUser(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const sessionId = await resolveSessionUserId(session);
+
+  if (sessionId) {
+    return {
+      id: sessionId,
+      role: session?.user?.role || null,
+    };
+  }
+
+  const commonOptions = { req: request, secret: authSecret };
+  let token = await getToken(commonOptions);
+
+  if (!token) {
+    token = await getToken({ ...commonOptions, cookieName: 'next-auth.session-token' });
+  }
+  if (!token) {
+    token = await getToken({ ...commonOptions, cookieName: '__Secure-next-auth.session-token' });
+  }
+
+  if (!token) {
+    return null;
+  }
+
+  const tokenId = typeof token.id === 'string' ? token.id : null;
+  const tokenRole = typeof token.role === 'string' ? token.role : null;
+  const tokenEmail = typeof token.email === 'string' ? token.email : null;
+
+  if (tokenId) {
+    return {
+      id: tokenId,
+      role: tokenRole,
+    };
+  }
+
+  if (tokenEmail) {
+    const user = await prisma.user.findUnique({
+      where: { email: tokenEmail },
+      select: { id: true, role: true },
+    });
+
+    if (user) {
+      return {
+        id: user.id,
+        role: user.role,
+      };
+    }
+  }
+
+  return null;
 }
 
 function toDisplayDate(value: Date): string {
@@ -121,6 +233,35 @@ function normalizeStatus(value: unknown): SalesOrderStatus {
   if (value === 'pending' || value === 'processing' || value === 'delivery' || value === 'canceled' || value === 'customer-leds') {
     return value;
   }
+
+  if (typeof value !== 'string') {
+    return 'customer-leds';
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'lead' || normalized === 'leads' || normalized === 'customer-led' || normalized === 'customer-leds') {
+    return 'customer-leds';
+  }
+  if (normalized === 'pending' || normalized === 'transferred') {
+    return 'pending';
+  }
+  if (normalized === 'processing' || normalized === 'confirmed') {
+    return 'processing';
+  }
+  if (
+    normalized === 'delivery' ||
+    normalized === 'done' ||
+    normalized === 'completed' ||
+    normalized === 'delivered' ||
+    normalized === 'complete delivery' ||
+    normalized.replace(/[\s_-]+/g, '') === 'completedelivery'
+  ) {
+    return 'delivery';
+  }
+  if (normalized === 'canceled' || normalized === 'cancelled' || normalized === 'cancel') {
+    return 'canceled';
+  }
+
   return 'customer-leds';
 }
 
@@ -209,12 +350,13 @@ function paginateOrders(items: SalesOrderPayload[], page: number, limit: number)
   };
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
+    const authUser = await resolveRequestUser(request);
+    if (!authUser || (authUser.role !== 'SELLER' && authUser.role !== 'ADMIN')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    const actorUserId = authUser.id;
 
     const url = new URL(request.url);
     const pageParam = Number.parseInt(url.searchParams.get('page') || '', 10);
@@ -223,7 +365,7 @@ export async function GET(request: Request) {
 
     const rows = await prisma.lead.findMany({
       where: {
-        createdById: session.user.id,
+        createdById: actorUserId,
         notes: {
           contains: sourceMarker,
         },
@@ -268,12 +410,13 @@ export async function GET(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
+    const authUser = await resolveRequestUser(request);
+    if (!authUser || (authUser.role !== 'SELLER' && authUser.role !== 'ADMIN')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    const actorUserId = authUser.id;
 
     const body = (await request.json()) as OrdersSyncPayload;
     const salesRows = Array.isArray(body.salesOrders) ? body.salesOrders : [];
@@ -286,24 +429,42 @@ export async function PUT(request: Request) {
     const dedupedByOrderId = Array.from(new Map(merged.map((item) => [item.orderId, item])).values());
     const incomingOrderIds = new Set(dedupedByOrderId.map((item) => item.orderId));
 
-    const existingRows = await prisma.lead.findMany({
-      where: {
-        createdById: session.user.id,
-        notes: {
-          contains: sourceMarker,
+    const [existingRowsForIncoming, ownExistingRows] = await Promise.all([
+      incomingOrderIds.size > 0
+        ? prisma.lead.findMany({
+            where: {
+              leadId: {
+                in: [...incomingOrderIds],
+              },
+              notes: {
+                contains: sourceMarker,
+              },
+            },
+            select: {
+              id: true,
+              leadId: true,
+              customerName: true,
+              phone: true,
+              stage: true,
+              notes: true,
+              createdById: true,
+            },
+          })
+        : Promise.resolve([]),
+      prisma.lead.findMany({
+        where: {
+          createdById: actorUserId,
+          notes: {
+            contains: sourceMarker,
+          },
         },
-      },
-      select: {
-        id: true,
-        leadId: true,
-        customerName: true,
-        phone: true,
-        stage: true,
-        notes: true,
-      },
-    });
+        select: {
+          leadId: true,
+        },
+      }),
+    ]);
 
-    const existingByOrderId = new Map(existingRows.map((item) => [item.leadId, item]));
+    const existingByOrderId = new Map(existingRowsForIncoming.map((item) => [item.leadId, item]));
 
     const integrationJobs: Array<{
       orderId: string;
@@ -323,7 +484,7 @@ export async function PUT(request: Request) {
 
         const meta: OrderMeta = {
           source: 'seller-dashboard-orders',
-          date: item.date,
+          date: truncateText(item.date, 40),
           lastStatus: item.status,
           smsState:
             isStatusTransition
@@ -338,25 +499,27 @@ export async function PUT(request: Request) {
               ? normalizeIndicatorState(item.courierState)
               : existingMeta?.courierState || 'pending',
           contactType: item.contactType,
-          villageRoad: item.villageRoad,
-          policeStation: item.policeStation,
-          district: item.district,
-          productsDetails: item.productsDetails,
-          subTotal: item.subTotal,
-          discount: item.discount,
-          totalTaka: item.totalTaka,
-          sampleImageName: item.sampleImageName,
+          villageRoad: truncateText(item.villageRoad, 160),
+          policeStation: truncateText(item.policeStation, 120),
+          district: truncateText(item.district, 120),
+          productsDetails: truncateText(item.productsDetails, 1200),
+          subTotal: truncateText(item.subTotal, 40),
+          discount: truncateText(item.discount, 40),
+          totalTaka: truncateText(item.totalTaka, 40),
+          sampleImageName: truncateText(item.sampleImageName, 240),
         };
+
+        const compactProductNote = truncateText(item.productsDetails, 1200) || '';
 
         if (existingRow) {
           await tx.lead.update({
-            where: { leadId: item.orderId },
+            where: { id: existingRow.id },
             data: {
               customerName: item.name,
               phone: item.mobile,
               notes: JSON.stringify(meta),
               quantity: null,
-              productNote: item.productsDetails || '',
+              productNote: compactProductNote,
               stage: stageByStatus[item.status],
             },
           });
@@ -368,9 +531,9 @@ export async function PUT(request: Request) {
               phone: item.mobile,
               notes: JSON.stringify(meta),
               quantity: null,
-              productNote: item.productsDetails || '',
+              productNote: compactProductNote,
               stage: stageByStatus[item.status],
-              createdById: session.user.id,
+              createdById: actorUserId,
             },
           });
         }
@@ -386,11 +549,11 @@ export async function PUT(request: Request) {
         }
       }
 
-      const staleOrderIds = existingRows.filter((row) => !incomingOrderIds.has(row.leadId)).map((row) => row.leadId);
+      const staleOrderIds = ownExistingRows.filter((row) => !incomingOrderIds.has(row.leadId)).map((row) => row.leadId);
       if (staleOrderIds.length > 0) {
         await tx.lead.deleteMany({
           where: {
-            createdById: session.user.id,
+            createdById: actorUserId,
             leadId: { in: staleOrderIds },
           },
         });
@@ -439,16 +602,17 @@ export async function PUT(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
+    const authUser = await resolveRequestUser(request);
+    if (!authUser || (authUser.role !== 'SELLER' && authUser.role !== 'ADMIN')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    const actorUserId = authUser.id;
 
     const deletedRows = await prisma.lead.deleteMany({
       where: {
-        createdById: session.user.id,
+        createdById: actorUserId,
         notes: {
           contains: sourceMarker,
         },
