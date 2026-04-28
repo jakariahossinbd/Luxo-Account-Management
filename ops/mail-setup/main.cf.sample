@@ -1,0 +1,24 @@
+# Postfix main.cf sample — adapt values for your domain
+# Replace <DOMAIN> and paths as needed
+myhostname = mail.<DOMAIN>
+myorigin = /etc/mailname
+mydestination = $myhostname, localhost.$mydomain, localhost
+inet_interfaces = all
+inet_protocols = ipv4
+mynetworks = 127.0.0.0/8
+home_mailbox = Maildir/
+virtual_transport = dovecot
+virtual_mailbox_domains = <DOMAIN>
+virtual_mailbox_base = /var/mail/vhosts
+smtpd_tls_cert_file = /etc/letsencrypt/live/mail.<DOMAIN>/fullchain.pem
+smtpd_tls_key_file = /etc/letsencrypt/live/mail.<DOMAIN>/privkey.pem
+smtpd_use_tls = yes
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = no
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+smtpd_sender_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+# DKIM signing is expected to be done via opendkim or milter
+# See generate_dkim.sh for key generation guidance

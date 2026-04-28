@@ -78,6 +78,7 @@ model User {
   employee        Employee?
   notifications   Notification[]
   attendances     Attendance[]
+  archivedAttendances ArchivedAttendance[]
   activities      DailyActivity[]
   leaveRequests   LeaveRequest[]
   salaries        Salary[]
@@ -525,4 +526,20 @@ model Salary {
   @@unique([userId, month, year])
   @@index([userId, month, year])
   @@map("salaries")
+}
+
+model ArchivedAttendance {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  month         Int      @map("month")
+  year          Int      @map("year")
+  fileBuffer    Bytes    @map("file_buffer")
+  fileName      String   @map("file_name")
+  archivedAt    DateTime @default(now()) @map("archived_at")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year])
+  @@index([userId, month, year])
+  @@map("archived_attendances")
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Clock, Download, LogOut, X } from 'lucide-react';
+import { CheckCircle, ChevronLeft, ChevronRight, Clock, Download, LogOut, X } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { DatePanelPicker, buildCalendarDays, monthNames } from '@/components/layout/DatePanelPicker';
 import { DateRangeOption, useDatePanelSelection } from '@/hooks/useDatePanelSelection';
@@ -73,6 +73,10 @@ function formatTime(value?: string | null) {
   });
 }
 
+function isFriday(year: number, monthIndex: number, day: number) {
+  return new Date(year, monthIndex, day).getDay() === 5;
+}
+
 export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profile }: SellerAttendanceDashboardProps) {
   const router = useRouter();
   const { warning } = useToast();
@@ -100,6 +104,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
   const [loading, setLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [activeStatuses, setActiveStatuses] = useState<Set<DayStatus>>(new Set());
   const datePanelRef = useRef<HTMLDivElement>(null);
   const dateToggleRef = useRef<HTMLButtonElement>(null);
 
@@ -113,6 +118,18 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
     } : null),
     [customEndDay, customStartDay],
   );
+  const toggleStatus = (status: DayStatus) => {
+    if (status === 'empty') return;
+    setActiveStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
 
   const fetchAttendanceData = useCallback(async (month: number, year: number) => {
     setLoading(true);
@@ -148,8 +165,8 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
 
   const getDayStatus = (day: number): DayStatus => {
     if (!day) return 'empty';
+    if (isFriday(selectedYear, selectedMonth, day)) return 'holiday';
     const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (holidayDates.includes(dateStr)) return 'holiday';
     const record = attendanceRecords.find((recordItem) => recordItem.date === dateStr);
     if (!record) return 'absent';
     if (record.status === 'CHECKED_OUT') return 'present';
@@ -171,6 +188,26 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
         return 'border-slate-200 bg-white text-slate-400';
     }
   };
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<Exclude<DayStatus, 'empty'>, number> = {
+      present: 0,
+      absent: 0,
+      late: 0,
+      holiday: 0,
+    };
+
+    const lastDay = isCurrentMonth ? todayDayOfMonth : new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+    for (let day = 1; day <= lastDay; day += 1) {
+      const status = getDayStatus(day);
+      if (status !== 'empty') {
+        counts[status] += 1;
+      }
+    }
+
+    return counts;
+  }, [getDayStatus, isCurrentMonth, selectedMonth, selectedYear, todayDayOfMonth]);
 
   useEffect(() => {
     void fetchAttendanceData(selectedMonth, selectedYear);
@@ -194,7 +231,16 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
   }, [isDatePanelOpen]);
 
   const totalLateDays = attendanceRecords.filter((record) => record.status === 'ON_BREAK').length;
-  const totalHolidayDays = holidayDates.length;
+  const totalHolidayDays = useMemo(() => {
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    let fridayCount = 0;
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      if (isFriday(selectedYear, selectedMonth, day)) {
+        fridayCount += 1;
+      }
+    }
+    return fridayCount;
+  }, [selectedMonth, selectedYear]);
   const formattedTodaysEarning = todaysEarning.toLocaleString('en-BD', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -221,7 +267,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
   const handleDownloadAttendance = async () => {
     setIsDownloading(true);
     try {
-      const response = await fetch(`/api/staff/attendance/export?month=${selectedMonth + 1}&year=${selectedYear}`);
+      const response = await fetch(`/api/staff/attendance/export?month=${selectedMonth + 1}&year=${selectedYear}&format=xlsx`);
       if (!response.ok) {
         warning('Failed to download attendance sheet');
         return;
@@ -231,7 +277,7 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `seller-attendance-${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}.csv`;
+      link.download = `seller-attendance-${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -241,6 +287,12 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  const isFutureDay = (day: number) => {
+    if (!day) return false;
+    if (!isCurrentMonth) return false;
+    return day > todayDayOfMonth;
   };
 
   return (
@@ -508,12 +560,14 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
         <div className="mt-3 grid grid-cols-7 gap-2">
           {calendarDays.map((day, idx) => {
             const status = getDayStatus(day);
+            const hideValue = isFutureDay(day);
+            const isVisibleStatus = status === 'empty' || activeStatuses.size === 0 || activeStatuses.has(status);
             return (
               <div
                 key={idx}
-                className={`flex aspect-square items-center justify-center rounded-[8px] border text-[15px] font-semibold transition ${day ? getDayColor(status) : 'border-slate-200 bg-white text-transparent'}`}
+                className={`flex aspect-square items-center justify-center rounded-[8px] border text-[15px] font-semibold transition ${day && !hideValue && isVisibleStatus ? getDayColor(status) : 'border-slate-200 bg-white text-transparent'}`}
               >
-                {day || ''}
+                {hideValue || !isVisibleStatus ? '' : (day || '')}
               </div>
             );
           })}
@@ -521,22 +575,30 @@ export function SellerAttendanceDashboard({ sellerId: _sellerId, profile: _profi
 
         <div className="mt-5 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-4 gap-2">
-            <div className="flex items-center justify-center gap-1.5">
-              <div className="h-4 w-4 rounded-[3px] border border-[#2fbf71] bg-[#c9f4d9]" />
-              <span className="text-[12px] text-slate-600 sm:text-sm">Present</span>
-            </div>
-            <div className="flex items-center justify-center gap-1.5">
-              <div className="h-4 w-4 rounded-[3px] border border-[#e9302d] bg-[#ffd5d4]" />
-              <span className="text-[12px] text-slate-600 sm:text-sm">Absent</span>
-            </div>
-            <div className="flex items-center justify-center gap-1.5">
-              <div className="h-4 w-4 rounded-[3px] border border-[#ff9d2e] bg-[#ffe3b8]" />
-              <span className="text-[12px] text-slate-600 sm:text-sm">Late</span>
-            </div>
-            <div className="flex items-center justify-center gap-1.5">
-              <div className="h-4 w-4 rounded-[3px] border border-[#3d46d9] bg-[#d7ddff]" />
-              <span className="text-[12px] text-slate-600 sm:text-sm">Holiday</span>
-            </div>
+            {([
+              ['present', 'Present', '#2fbf71', '#c9f4d9'],
+              ['absent', 'Absent', '#e9302d', '#ffd5d4'],
+              ['late', 'Late', '#ff9d2e', '#ffe3b8'],
+              ['holiday', 'Holiday', '#3d46d9', '#d7ddff'],
+            ] as const).map(([status, label, borderColor, backgroundColor]) => {
+              const isActive = activeStatuses.has(status);
+              return (
+                <div key={status} className="flex items-center justify-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleStatus(status)}
+                    className="relative h-4 w-4 rounded-[3px] border"
+                    style={{ borderColor, backgroundColor }}
+                    aria-label={`Toggle ${label} filter`}
+                  >
+                    {isActive ? <CheckCircle className="absolute -right-1 -top-1 h-4 w-4 text-slate-900" /> : null}
+                  </button>
+                  <span className="text-[12px] text-slate-600 sm:text-sm">
+                    {label} {statusCounts[status]}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-4 flex justify-center">

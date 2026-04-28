@@ -1,6 +1,3 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateAttendanceXlsx, AttendanceRow, AttendanceStats } from '@/lib/excel/attendanceXlsx';
 
@@ -11,14 +8,6 @@ function formatDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function formatTime(value: Date | null): string {
-  if (!value) return '';
-  return value.toLocaleTimeString('en-BD', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function formatTimeForDisplay(date: Date | null): string {
   if (!date) return '';
   const hours = String(date.getHours()).padStart(2, '0');
@@ -26,56 +15,15 @@ function formatTimeForDisplay(date: Date | null): string {
   return `${hours}:${minutes}`;
 }
 
-export async function GET(request: Request) {
+export async function archiveMonthlyAttendance(userId: string, month: number, year: number) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const now = new Date();
-    const selectedMonth = Number(searchParams.get('month') || now.getMonth() + 1);
-    const selectedYear = Number(searchParams.get('year') || now.getFullYear());
-    const format = searchParams.get('format') || 'xlsx'; // Default to XLSX
-
-    const month = selectedMonth >= 1 && selectedMonth <= 12 ? selectedMonth : now.getMonth() + 1;
-    const year = selectedYear >= 2000 && selectedYear <= 2100 ? selectedYear : now.getFullYear();
-
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 1);
 
-    // Check if requesting archived data (past months)
-    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
-
-    // Try to get archived version first (if not current month or if format=archived explicitly)
-    if (!isCurrentMonth) {
-      const archived = await prisma.archivedAttendance.findUnique({
-        where: {
-          userId_month_year: {
-            userId: session.user.id,
-            month,
-            year,
-          },
-        },
-      });
-
-      if (archived) {
-        const fileName = `seller-attendance-${year}-${String(month).padStart(2, '0')}.xlsx`;
-        return new NextResponse(archived.fileBuffer, {
-          headers: {
-            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': `attachment; filename="${fileName}"`,
-          },
-        });
-      }
-    }
-
-    // Fetch live attendance data for the month
     const [attendances, holidays, user] = await Promise.all([
       prisma.attendance.findMany({
         where: {
-          userId: session.user.id,
+          userId,
           date: { gte: monthStart, lt: monthEnd },
         },
         orderBy: { date: 'asc' },
@@ -85,10 +33,14 @@ export async function GET(request: Request) {
         select: { date: true },
       }),
       prisma.user.findUnique({
-        where: { id: session.user.id },
+        where: { id: userId },
         select: { id: true, name: true },
       }),
     ]);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
 
     const attendanceMap = new Map(attendances.map((item) => [formatDateKey(item.date), item]));
     const holidayKeys = new Set(holidays.map((item) => formatDateKey(item.date)));
@@ -131,8 +83,8 @@ export async function GET(request: Request) {
     }
 
     // Generate XLSX
-    const sellerId = user?.id?.substring(0, 8).toUpperCase() || 'UNKNOWN';
-    const sellerName = user?.name || 'Unknown';
+    const sellerId = user.id.substring(0, 8).toUpperCase();
+    const sellerName = user.name || 'Unknown';
     const xlsxBuffer = await generateAttendanceXlsx(
       sellerId,
       sellerName,
@@ -144,14 +96,33 @@ export async function GET(request: Request) {
 
     const fileName = `seller-attendance-${year}-${String(month).padStart(2, '0')}.xlsx`;
 
-    return new NextResponse(xlsxBuffer, {
-      headers: {
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
+    // Save to database
+    await prisma.archivedAttendance.upsert({
+      where: {
+        userId_month_year: {
+          userId,
+          month,
+          year,
+        },
+      },
+      update: {
+        fileBuffer: xlsxBuffer,
+        fileName,
+        archivedAt: new Date(),
+      },
+      create: {
+        userId,
+        month,
+        year,
+        fileBuffer: xlsxBuffer,
+        fileName,
       },
     });
+
+    console.log(`Archived attendance for user ${userId}, month ${month}/${year}`);
+    return true;
   } catch (error) {
-    console.error('Attendance export error:', error);
-    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
+    console.error(`Error archiving attendance for user ${userId}:`, error);
+    return false;
   }
 }
