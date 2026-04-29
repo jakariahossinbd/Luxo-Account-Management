@@ -1,0 +1,54 @@
+---
+# Ansible playbook (deb-based) to install core packages and copy sample configs.
+- hosts: mailservers
+  become: true
+  vars:
+    domain: example.com
+    mail_user: vmail
+  tasks:
+    - name: Install packages
+      apt:
+        name:
+          - postfix
+          - dovecot-core
+          - dovecot-imapd
+          - opendkim
+          - opendkim-tools
+          - nginx
+          - php-fpm
+        state: present
+        update_cache: yes
+
+    - name: Create vmail mailbox dir
+      file:
+        path: /var/mail/vhosts/{{ domain }}
+        state: directory
+        owner: '{{ mail_user }}'
+        group: '{{ mail_user }}'
+        mode: '0755'
+
+    - name: Upload postfix main.cf sample
+      copy:
+        src: ../../ops/mail-setup/main.cf.sample
+        dest: /etc/postfix/main.cf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Upload dovecot config sample
+      copy:
+        src: ../../ops/mail-setup/dovecot.conf.sample
+        dest: /etc/dovecot/dovecot.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Ensure services are restarted
+      service:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - opendkim
+        - postfix
+        - dovecot
+        - nginx

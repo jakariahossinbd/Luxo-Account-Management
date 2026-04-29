@@ -1,0 +1,3 @@
+ALTER TABLE `leads`
+  MODIFY `notes` LONGTEXT NULL,
+  MODIFY `product_note` LONGTEXT NULL;

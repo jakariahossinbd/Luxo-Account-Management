@@ -1,0 +1,2 @@
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""c:\laragon\www\Luxo-Account-Management\hidden-start.ps1""", 0, False

@@ -1,0 +1,16 @@
+Syslog                  yes
+UMask                   002
+Canonicalization        relaxed/simple
+Mode                    sv
+SubDomains              no
+Socket                  inet:8891@localhost
+
+# KeyTable, SigningTable and ExternalIgnoreList/InternalHosts are examples
+KeyTable                /etc/opendkim/key.table
+SigningTable            /etc/opendkim/signing.table
+ExternalIgnoreList     refile:/etc/opendkim/trusted.hosts
+InternalHosts           /etc/opendkim/trusted.hosts
+
+# Recommended selector directory layout: /etc/opendkim/keys/<domain>/selector.private
+# Example key.table entry:
+# mail._domainkey.example.com example.com:mail:/etc/opendkim/keys/example.com/mail.private

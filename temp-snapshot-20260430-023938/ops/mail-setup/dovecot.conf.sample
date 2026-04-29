@@ -1,0 +1,27 @@
+# Dovecot sample configuration (minimal)
+protocols = imap lmtp
+listen = *
+
+mail_location = maildir:/var/mail/vhosts/%d/%n
+
+passdb {
+  driver = passwd-file
+  args = username_format=%u /etc/dovecot/passwd
+}
+
+userdb {
+  driver = static
+  args = uid=5000 gid=5000 home=/var/mail/vhosts/%d/%n
+}
+
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}
+
+ssl = required
+ssl_cert = </etc/letsencrypt/live/mail.<DOMAIN>/fullchain.pem
+ssl_key = </etc/letsencrypt/live/mail.<DOMAIN>/privkey.pem

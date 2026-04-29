@@ -1,0 +1,21 @@
+server {
+  listen 80;
+  server_name webmail.<DOMAIN>;
+  root /var/www/roundcube/;
+
+  location / {
+    try_files $uri $uri/ /index.php?
+  }
+
+  location ~ \.(php)$ {
+    fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+    fastcgi_index index.php;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+  }
+
+  location ~* \.(css|js|jpg|jpeg|png|gif|ico)$ {
+    expires 30d;
+    add_header Cache-Control "public";
+  }
+}
